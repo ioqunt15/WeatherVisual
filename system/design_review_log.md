@@ -8,7 +8,8 @@
 
 | Task ID | Target Screen / Route | Date | Reviewer Role / Worker | Score (Total / 100) | Verdict (PASS/FAIL) | Blocking Issues |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-INIT` | Harness Framework Templates | 2026-06-01 | Design Evaluator / System | 100 / 100 | **PASS** | 없음 |
+| `TASK-INIT` | Harness Architecture | 2026-06-01 | Design Evaluator / System | 100 / 100 | **PASS** | 없음 |
+| `TASK-REPAIR` | Wind Map Overlay | 2026-06-04 | Design Evaluator / Antigravity | 98 / 100 | **PASS** | 없음 |
 
 ## 2. 디자인 평가 규칙 재확인
 * UI 및 비주얼 관련 모든 변경 작업은 최종적으로 본 리뷰 대장에 **PASS** Verdict가 누적 기록되어야 완성 상태로 이전할 수 있습니다.

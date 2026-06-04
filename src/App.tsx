@@ -400,7 +400,11 @@ function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi')
     val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
     val = Math.round(val * 10) / 10
     
-    return { ...point, value: val }
+    let dir = point.direction
+    if (dir !== undefined) {
+      dir = Math.round((dir + cycle * 45 + prngVal * 30 + 360) % 360)
+    }
+    return { ...point, value: val, direction: dir }
   })
   
   frames.push({
@@ -432,7 +436,12 @@ function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi')
       val += prngVal * (range * 0.1)
       val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
       val = Math.round(val * 10) / 10
-      return { ...point, value: val }
+      
+      let dir = point.direction
+      if (dir !== undefined) {
+        dir = Math.round((dir + cycle * 45 + prngVal * 30 + 360) % 360)
+      }
+      return { ...point, value: val, direction: dir }
     })
     
     const label = `예보 ${String(hour).padStart(2, '0')}:00`
@@ -767,7 +776,7 @@ function createCalloutIcon(point: DisasterPoint, scenario: DisasterScenario, lan
   const nameFontSize = lang === 'vi' ? 9.5 : 10.5
 
   const hasArrow = point.direction !== undefined
-  const directionAngle = hasArrow ? point.direction : 0
+  const directionAngle = point.direction !== undefined ? (point.direction + 180) % 360 : 0
 
   if (scenario.id === 'wind' || scenario.id === 'forecast_wind' || scenario.id === 'gust' || scenario.id === 'typhoon') {
     const speedColor = rgbaToCss(valueToSteppedColor(point.value, scenario.palette, 255))
@@ -824,7 +833,7 @@ function createCalloutIcon(point: DisasterPoint, scenario: DisasterScenario, lan
   const cardHeight = 19
 
   const arrowSvg = hasArrow ? `
-  <g transform="translate(${iconWidth - 20}, 5.5) rotate(${point.direction}, 6, 6)">
+  <g transform="translate(${iconWidth - 20}, 5.5) rotate(${directionAngle}, 6, 6)">
     <circle cx="6" cy="6" r="5.5" fill="#f8fbff" stroke="#111820" stroke-width="0.8" />
     <path d="M6 2 L8.5 9 L6 7.5 L3.5 9 Z" fill="#1a75ff" stroke="#111820" stroke-width="0.5" stroke-linejoin="round"/>
   </g>
@@ -1708,6 +1717,7 @@ function App() {
           ...f,
           properties: {
             ...f.properties,
+            direction: cell.direction !== undefined ? (cell.direction + 180) % 360 : undefined,
             elevation: getColumnElevationValue(cell, activeScenario),
             color: rgbaToCss(valueToSteppedColor(cell.value, activeScenario.palette, 238)),
           }
@@ -2834,6 +2844,19 @@ function App() {
   ])
 
 
+  const activeScenarioPointsRef = useRef(activeScenario.points)
+  const activeScenarioMaxValRef = useRef(activeScenario.maxValue)
+  const gridCellsRef = useRef(gridCells)
+
+  useEffect(() => {
+    activeScenarioPointsRef.current = activeScenario.points
+    activeScenarioMaxValRef.current = activeScenario.maxValue
+  }, [activeScenario.points, activeScenario.maxValue])
+
+  useEffect(() => {
+    gridCellsRef.current = gridCells
+  }, [gridCells])
+
   // Windy-style particle flow animation loop
   useEffect(() => {
     const canvas = particleCanvasRef.current
@@ -2857,10 +2880,10 @@ function App() {
     let animationId: number
     let running = true
 
-    const particleCount = 800
+    const particleCount = 400
     const particles: Array<{
-      x: number
-      y: number
+      lon: number
+      lat: number
       life: number
       age: number
     }> = []
@@ -2873,6 +2896,25 @@ function App() {
       }
     }
     resizeCanvas()
+
+    const getRandomGridPos = () => {
+      const currentGrid = gridCellsRef.current
+      if (currentGrid && currentGrid.length > 0) {
+        const cell = currentGrid[Math.floor(Math.random() * currentGrid.length)]
+        // Small jitter so they spawn smoothly in the administrative area
+        const jitterLon = (Math.random() - 0.5) * 0.12
+        const jitterLat = (Math.random() - 0.5) * 0.12
+        return {
+          lon: cell.lon + jitterLon,
+          lat: cell.lat + jitterLat
+        }
+      }
+      // Fallback within Vietnam bounds
+      return {
+        lon: 102 + Math.random() * 8,
+        lat: 8 + Math.random() * 15
+      }
+    }
 
     const estimateValueLocal = (lon: number, lat: number, points: DisasterPoint[]) => {
       let sumVal = 0
@@ -2907,11 +2949,13 @@ function App() {
       return Math.round((Math.atan2(sinSum, cosSum) * 180) / Math.PI + 360) % 360
     }
 
+    // Initialize particles in geographic positions inside Vietnam's territory
     for (let i = 0; i < particleCount; i++) {
+      const pos = getRandomGridPos()
       particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        life: 30 + Math.random() * 50,
+        lon: pos.lon,
+        lat: pos.lat,
+        life: 20 + Math.random() * 40,
         age: 0
       })
     }
@@ -2919,13 +2963,18 @@ function App() {
     const drawFrame = () => {
       if (!running) return
 
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.globalCompositeOperation = 'source-over'
+      // Clear the canvas when the map is moving (panning/zooming) to avoid trailing/smearing issues
+      if (map.isMoving()) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+      } else {
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.globalCompositeOperation = 'source-over'
+      }
 
-      const points = activeScenario.points
-      const maxVal = activeScenario.maxValue || 25
+      const points = activeScenarioPointsRef.current
+      const maxVal = activeScenarioMaxValRef.current || 25
       const bearing = map.getBearing()
       const width = canvas.width
       const height = canvas.height
@@ -2933,46 +2982,51 @@ function App() {
       for (let i = 0; i < particleCount; i++) {
         const p = particles[i]
 
-        if (p.age >= p.life || p.x < 0 || p.x > width || p.y < 0 || p.y > height) {
-          p.x = Math.random() * width
-          p.y = Math.random() * height
-          p.life = 30 + Math.random() * 50
+        // Project particle coordinates to screen space
+        let posScreen = map.project([p.lon, p.lat])
+
+        // Respawn if expired, or went outside the viewport
+        if (
+          p.age >= p.life ||
+          posScreen.x < 0 || posScreen.x > width ||
+          posScreen.y < 0 || posScreen.y > height
+        ) {
+          const newPos = getRandomGridPos()
+          p.lon = newPos.lon
+          p.lat = newPos.lat
+          p.life = 20 + Math.random() * 40
           p.age = 0
+          posScreen = map.project([p.lon, p.lat])
         }
 
-        const lngLat = map.unproject([p.x, p.y])
-        
-        if (lngLat.lng < 98 || lngLat.lng > 120 || lngLat.lat < 6 || lngLat.lat > 25) {
-          p.x = Math.random() * width
-          p.y = Math.random() * height
-          p.life = 30 + Math.random() * 50
-          p.age = 0
-          continue
-        }
+        const speed = estimateValueLocal(p.lon, p.lat, points)
+        const direction = estimateDirectionLocal(p.lon, p.lat, points)
 
-        const speed = estimateValueLocal(lngLat.lng, lngLat.lat, points)
-        const direction = estimateDirectionLocal(lngLat.lng, lngLat.lat, points)
-
+        // Convert meteorological direction to screen space angle
         const angleScreen = ((direction - bearing) * Math.PI) / 180
         const dx = Math.sin(angleScreen)
         const dy = -Math.cos(angleScreen)
 
-        const speedFactor = 0.05 + (speed / maxVal) * 0.35
-        const stepX = dx * speedFactor * 10
-        const stepY = dy * speedFactor * 10
+        // Slow, elegant pixel speed: low speed = 0.12px/frame, max speed = ~1.1px/frame
+        const speedScale = 0.12 + (speed / maxVal) * 0.98
+        const stepX = dx * speedScale
+        const stepY = dy * speedScale
 
-        const nextX = p.x + stepX
-        const nextY = p.y + stepY
+        const nextX = posScreen.x + stepX
+        const nextY = posScreen.y + stepY
+
+        // Convert next screen coordinates back to geographic coordinates
+        const nextLngLat = map.unproject([nextX, nextY])
 
         ctx.beginPath()
-        ctx.moveTo(p.x, p.y)
+        ctx.moveTo(posScreen.x, posScreen.y)
         ctx.lineTo(nextX, nextY)
-        ctx.strokeStyle = `rgba(240, 248, 255, ${0.15 + (speed / maxVal) * 0.65})`
+        ctx.strokeStyle = `rgba(240, 248, 255, ${0.18 + (speed / maxVal) * 0.65})`
         ctx.lineWidth = 0.8 + (speed / maxVal) * 1.5
         ctx.stroke()
 
-        p.x = nextX
-        p.y = nextY
+        p.lon = nextLngLat.lng
+        p.lat = nextLngLat.lat
         p.age++
       }
 
@@ -2996,7 +3050,7 @@ function App() {
       map.off('zoom', handleMapChange)
       map.off('resize', handleMapChange)
     }
-  }, [activeScenario, scenarioId, overlayWind, mapStyleLoaded, mapLayersInitialized])
+  }, [scenarioId, overlayWind, mapStyleLoaded, mapLayersInitialized])
 
   // 3. 3D 모드 전환 및 투영법 연동 + 애니메이션(columnReveal) 연동
   useEffect(() => {
