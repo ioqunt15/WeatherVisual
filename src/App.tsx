@@ -851,6 +851,8 @@ const translations: Record<Language, Record<string, string>> = {
     forecast_rain_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS (24h)',
     future_danger_headline: 'Phân tích các chỉ số nguy cơ thiên tai khác',
     future_danger_subtitle: 'Mô hình phân tích sạt lở đất và các chỉ số nguy cơ bổ sung',
+    hoangsa: 'Quần đảo Hoàng Sa',
+    truongsa: 'Quần đảo Trường Sa',
   },
   en: {
     observation: 'Observation Info',
@@ -951,6 +953,8 @@ const translations: Record<Language, Record<string, string>> = {
     forecast_rain_subtitle: 'CF-VHWIS High-Resolution Weather Data Production (24h)',
     future_danger_headline: 'Disaster Risk Analysis Index',
     future_danger_subtitle: 'Landslide analysis and additional danger indices model',
+    hoangsa: 'Hoang Sa Archipelago',
+    truongsa: 'Truong Sa Archipelago',
   },
   ko: {
     observation: '기상관측정보',
@@ -1051,6 +1055,8 @@ const translations: Record<Language, Record<string, string>> = {
     forecast_rain_subtitle: 'CF-VHWIS 고해상도 기상정보 생산 (24h)',
     future_danger_headline: '기타 재난 위험지수 분석',
     future_danger_subtitle: '산사태 및 추가 위험지수 분석 모델',
+    hoangsa: '황사 군도',
+    truongsa: '쯔엉사 군도',
   }
 }
 
@@ -1072,7 +1078,7 @@ function App() {
   const [selectedStationId, setSelectedStationId] = useState<string>('hanoi')
   const [lang, setLang] = useState<Language>('vi')
   const [mapTheme, setMapTheme] = useState<MapThemeId>('dark')
-  const [regionLayer, setRegionLayer] = useState<RegionLayerId>('stations')
+  const [regionLayer, setRegionLayer] = useState<RegionLayerId>('regions')
   const [vietnamGeoJson, setVietnamGeoJson] = useState<VietnamGeoJson | null>(null)
   const [timeline, setTimeline] = useState<KmaFrame[]>(() => {
     const defaultSec = scenarios.find((s) => s.id === 'temperature') || scenarios[0]
@@ -1266,25 +1272,65 @@ function App() {
     const features = regionLayer === 'regions' ? [...regionalFeatures] : []
 
     if (regionLayer === 'regions') {
-      const islandGridCells = generateIslandGridCells(activeScenario.id, activeScenario)
-      const islandGrid = buildGridGeoJson(islandGridCells, activeScenario.gridCellSizeMeters)
-      islandGrid.features.forEach((f, idx) => {
-        const cell = islandGridCells[idx]
+      const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
+      const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
+
+      const R = activeScenario.gridCellSizeMeters * 0.38
+      const D_lat = 111120
+
+      if (hoangsaPt) {
+        const cosLat = Math.cos((hoangsaPt.lat * Math.PI) / 180)
+        const dLat = R / D_lat
+        const dLon = R / (D_lat * cosLat)
+        const poly = [
+          [hoangsaPt.lon - dLon, hoangsaPt.lat + dLat],
+          [hoangsaPt.lon + dLon, hoangsaPt.lat + dLat],
+          [hoangsaPt.lon + dLon, hoangsaPt.lat - dLat],
+          [hoangsaPt.lon - dLon, hoangsaPt.lat - dLat],
+          [hoangsaPt.lon - dLon, hoangsaPt.lat + dLat]
+        ]
         features.push({
           type: 'Feature',
           properties: {
-            id: cell.id,
-            label: cell.id.includes('hoangsa') ? 'Hoàng Sa' : 'Trường Sa',
-            value: cell.value,
-            lon: cell.lon,
-            lat: cell.lat,
+            id: 'hoangsa',
+            label: 'Quần đảo Hoàng Sa',
+            value: hoangsaPt.value,
+            lon: hoangsaPt.lon,
+            lat: hoangsaPt.lat,
           },
           geometry: {
             type: 'MultiPolygon',
-            coordinates: [f.geometry.coordinates as PolygonCoordinates]
+            coordinates: [[poly as [number, number][]]]
           }
         } as any)
-      })
+      }
+
+      if (truongsaPt) {
+        const cosLat = Math.cos((truongsaPt.lat * Math.PI) / 180)
+        const dLat = R / D_lat
+        const dLon = R / (D_lat * cosLat)
+        const poly = [
+          [truongsaPt.lon - dLon, truongsaPt.lat + dLat],
+          [truongsaPt.lon + dLon, truongsaPt.lat + dLat],
+          [truongsaPt.lon + dLon, truongsaPt.lat - dLat],
+          [truongsaPt.lon - dLon, truongsaPt.lat - dLat],
+          [truongsaPt.lon - dLon, truongsaPt.lat + dLat]
+        ]
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: 'truongsa',
+            label: 'Quần đảo Trường Sa',
+            value: truongsaPt.value,
+            lon: truongsaPt.lon,
+            lat: truongsaPt.lat,
+          },
+          geometry: {
+            type: 'MultiPolygon',
+            coordinates: [[poly as [number, number][]]]
+          }
+        } as any)
+      }
     }
 
     return {
@@ -1842,6 +1888,22 @@ function App() {
           },
         })
       }
+
+      // [CRITICAL FIX] Map sources are created; immediately populate data to avoid asynchronous React lifecycle delay
+      const regionSource = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
+      if (regionSource) regionSource.setData(regionalFeaturesGeoJson as any)
+
+      const gridSource = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
+      if (gridSource) gridSource.setData(gridGeoJson as any)
+
+      const pinsSource = map.getSource('callout-pins-source') as maplibregl.GeoJSONSource
+      if (pinsSource) pinsSource.setData(calloutPinsGeoJson as any)
+
+      const labelsSource = map.getSource('regional-labels-source') as maplibregl.GeoJSONSource
+      if (labelsSource) labelsSource.setData(regionalLabelsGeoJson as any)
+
+      map.triggerRepaint()
+
       setMapLayersInitialized(true)
     }
 
