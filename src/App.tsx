@@ -1707,17 +1707,22 @@ function App() {
     const initMapLayers = async () => {
       if (cancelled) return
 
+      // SVG 이미지 사전 로딩 (실패해도 레이어 등록은 계속 진행)
       try {
-        // 1-0. 이미지 리소스를 사전에 로딩하여 레이어 등록 시점에 레이스 컨디션 해결
         const points = overlayVisibility.callouts ? calloutPoints : []
         for (const point of points) {
+          if (cancelled) return
           const imageId = `station-callout-${point.id}`
           const svgContent = decodeURIComponent(point.iconUrl.replace('data:image/svg+xml;charset=utf-8,', ''))
           await addSvgImageToMap(map, imageId, svgContent)
         }
+      } catch (svgErr) {
+        console.warn('SVG pre-load failed (non-fatal, continuing):', svgErr)
+      }
 
-        if (cancelled) return
+      if (cancelled) return
 
+      try {
         // 1-1. 소스 등록
         if (!map.getSource('vietnam-regions-source')) {
           map.addSource('vietnam-regions-source', {
@@ -1752,7 +1757,9 @@ function App() {
             source: 'vietnam-regions-source',
             paint: {
               'fill-extrusion-color': ['get', 'color'],
+              'fill-extrusion-color-transition': { duration: 600, delay: 0 },
               'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
+              'fill-extrusion-height-transition': { duration: 600, delay: 0 },
               'fill-extrusion-base': 0,
               'fill-extrusion-opacity': 1.0,
               'fill-extrusion-vertical-gradient': true,
@@ -1768,7 +1775,9 @@ function App() {
             source: 'kma-grid-source',
             paint: {
               'fill-extrusion-color': ['get', 'color'],
+              'fill-extrusion-color-transition': { duration: 600, delay: 0 },
               'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
+              'fill-extrusion-height-transition': { duration: 600, delay: 0 },
               'fill-extrusion-base': 0,
               'fill-extrusion-opacity': 0.95,
               'fill-extrusion-vertical-gradient': true,
@@ -1839,7 +1848,7 @@ function App() {
           })
         }
 
-        // [CRITICAL FIX] Map sources are created; immediately populate data to avoid asynchronous React lifecycle delay
+        // [CRITICAL FIX] 레이어 등록 직후 최신 GeoJSON 데이터를 즉시 주입
         const regionSource = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
         if (regionSource) regionSource.setData(regionalFeaturesGeoJson as any)
 
@@ -1854,9 +1863,9 @@ function App() {
 
         map.triggerRepaint()
         setMapLayersInitialized(true)
-        console.log('Map layers successfully initialized.')
+        console.log('[Map] Layers initialized successfully.')
       } catch (err) {
-        console.error('Failed to initialize map layers, retrying in 200ms...', err)
+        console.error('[Map] Failed to initialize layers, retrying in 200ms...', err)
         if (!cancelled && retryCount < 5) {
           retryCount++
           setTimeout(initMapLayers, 200)
@@ -1876,6 +1885,7 @@ function App() {
       cancelled = true
     }
   }, [mapStyleLoaded, mapTheme])
+
 
   // 2. GeoJSON 소스 데이터 동적 업데이트 및 말풍선 SVG 갱신
   useEffect(() => {
@@ -1911,7 +1921,7 @@ function App() {
     // 2-1. 즉시 데이터 주입
     updateSources()
 
-    // 2-2. 맵 스타일 로딩 직후 타이밍 씹힘 방지를 위한 120ms 후 지연 재확인 주입
+    // 2-2. 맵 스타일 로딩 직후 타이밍 씹힘 방지를 위한 지연 재확인 주입
     const timer = setTimeout(updateSources, 120)
 
     // 말풍선 SVG 이미지 업데이트
@@ -1930,6 +1940,7 @@ function App() {
   }, [
     mapStyleLoaded,
     mapLayersInitialized,
+    vietnamGeoJson,
     gridGeoJson,
     regionalFeaturesGeoJson,
     regionalLabelsGeoJson,
@@ -1938,6 +1949,7 @@ function App() {
     overlayVisibility.callouts,
     regionLayer,
   ])
+
 
   // 3. 3D 모드 전환 및 투영법 연동 + 애니메이션(columnReveal) 연동
   useEffect(() => {
