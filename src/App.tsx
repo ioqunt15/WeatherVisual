@@ -14,7 +14,6 @@ import {
   Minus,
   PanelsTopLeft,
   Pause,
-  PencilLine,
   Play,
   Plus,
   RotateCw,
@@ -981,9 +980,7 @@ const translations: Record<Language, Record<string, string>> = {
   }
 }
 
-function getDynamicPitch(): number {
-  return 0
-}
+
 
 function App() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -1059,7 +1056,6 @@ function App() {
   const [shortcutChromeHidden, setShortcutChromeHidden] = useState(false)
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
   const [refreshNonce, setRefreshNonce] = useState(0)
-  const [showEditor, setShowEditor] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [is3DMode, setIs3DMode] = useState(true)
   const is3DModeRef = useRef(is3DMode)
@@ -1473,22 +1469,7 @@ function App() {
     map.setStyle(createMapStyle(mapTheme), { diff: false })
   }, [mapTheme])
 
-  useEffect(() => {
-    const map = mapRef.current
 
-    if (!map) {
-      return
-    }
-
-    map.easeTo({
-      center: scenario.center,
-      zoom: scenario.zoom,
-      pitch: getDynamicPitch(),
-      bearing: is3DMode ? scenario.bearing : 0,
-      duration: 750,
-      easing: (t) => t * (2 - t),
-    })
-  }, [scenario, is3DMode])
 
   // selectedStationId에 따라 지도 핀 크기 및 색상 강조 적용
   useEffect(() => {
@@ -1758,6 +1739,8 @@ function App() {
       if (labelsSource) {
         labelsSource.setData(regionalLabelsGeoJson as any)
       }
+
+      map.triggerRepaint()
     }
 
     // 2-1. 즉시 데이터 주입
@@ -1975,7 +1958,7 @@ function App() {
     setCameraShots((items) => (items.length <= 1 ? items : items.filter((item) => item.id !== id)))
   }
 
-  const goToCameraShot = (shot: CameraShot, duration = 720) => {
+  const goToCameraShot = (shot: CameraShot, duration = 1400) => {
     const map = mapRef.current
 
     if (!map) {
@@ -2203,7 +2186,7 @@ function App() {
         return
       }
 
-      const distance = event.shiftKey ? 90 : 45
+      const distance = event.shiftKey ? 50 : 25
       const moves: Record<string, [number, number]> = {
         w: [0, -distance],
         a: [-distance, 0],
@@ -2300,15 +2283,7 @@ function App() {
     }
   }
 
-  const updateScriptText = (field: keyof ScriptText, value: string) => {
-    setScriptTexts((items) => ({
-      ...items,
-      [scenario.id]: {
-        ...(items[scenario.id] ?? createScriptText(scenario)),
-        [field]: value,
-      },
-    }))
-  }
+
 
   const applyRainRange = () => {
     if (getRangeHours(rainRangeDraft) <= 0) {
@@ -2809,46 +2784,10 @@ function App() {
               </form>
             )}
 
-            {showEditor && (
-              <form className="text-editor" aria-label="방송 문구 수정" onSubmit={(event) => event.preventDefault()}>
-                <label>
-                  <span>분류</span>
-                  <input
-                    value={scriptText.title}
-                    onChange={(event) => updateScriptText('title', event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>제목</span>
-                  <input
-                    value={scriptText.headline}
-                    onChange={(event) => updateScriptText('headline', event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>보조문구</span>
-                  <input
-                    value={scriptText.subtitle}
-                    onChange={(event) => updateScriptText('subtitle', event.target.value)}
-                  />
-                </label>
-              </form>
-            )}
+
 
             {overlayVisibility.controls && !shortcutChromeHidden && (
             <nav className="control-dock" aria-label="시연 컨트롤">
-              <button
-                type="button"
-                className={`play-button ${cameraPanelOpen ? 'active' : ''}`}
-                onClick={() => setCameraPanelOpen((value) => !value)}
-              >
-                <Play size={14} fill="currentColor" />
-                <span>{translations[lang]['demo'] || '시연'}</span>
-              </button>
-              <button type="button" className="edit-button" onClick={() => setShowEditor((value) => !value)}>
-                <PencilLine size={14} />
-                <span>{translations[lang]['texts'] || '문구'}</span>
-              </button>
               <button type="button" className="edit-button" onClick={() => setShowSettings(true)}>
                 <Settings size={14} />
                 <span>{translations[lang]['settings'] || '설정'}</span>
