@@ -1077,8 +1077,8 @@ function App() {
   const [scenarioId, setScenarioId] = useState<DisasterScenario['id']>('temperature')
   const [selectedStationId, setSelectedStationId] = useState<string>('hanoi')
   const [lang, setLang] = useState<Language>('vi')
-  const [mapTheme, setMapTheme] = useState<MapThemeId>('dark')
-  const [regionLayer, setRegionLayer] = useState<RegionLayerId>('regions')
+  const [mapTheme, setMapTheme] = useState<MapThemeId>('satellite')
+  const [regionLayer, setRegionLayer] = useState<RegionLayerId>('stations')
   const [vietnamGeoJson, setVietnamGeoJson] = useState<VietnamGeoJson | null>(null)
   const [timeline, setTimeline] = useState<KmaFrame[]>(() => {
     const defaultSec = scenarios.find((s) => s.id === 'temperature') || scenarios[0]
@@ -1517,7 +1517,7 @@ function App() {
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: createMapStyle('dark'),
+      style: createMapStyle('satellite'),
       center: [109.5, 15.0],
       zoom: 4.8,
       pitch: 0,
@@ -1754,163 +1754,180 @@ function App() {
       return
     }
 
+    let retryCount = 0
+    let cancelled = false
+
     setMapLayersInitialized(false)
     const initMapLayers = async () => {
-      // 1-0. 이미지 리소스를 사전에 로딩하여 레이어 등록 시점에 레이스 컨디션 해결
+      if (cancelled) return
+
       try {
+        // 1-0. 이미지 리소스를 사전에 로딩하여 레이어 등록 시점에 레이스 컨디션 해결
         const points = overlayVisibility.callouts ? calloutPoints : []
         for (const point of points) {
           const imageId = `station-callout-${point.id}`
           const svgContent = decodeURIComponent(point.iconUrl.replace('data:image/svg+xml;charset=utf-8,', ''))
           await addSvgImageToMap(map, imageId, svgContent)
         }
+
+        if (cancelled) return
+
+        // 1-1. 소스 등록
+        if (!map.getSource('vietnam-regions-source')) {
+          map.addSource('vietnam-regions-source', {
+            type: 'geojson',
+            data: regionalFeaturesGeoJson as any,
+          })
+        }
+        if (!map.getSource('kma-grid-source')) {
+          map.addSource('kma-grid-source', {
+            type: 'geojson',
+            data: gridGeoJson as any,
+          })
+        }
+        if (!map.getSource('callout-pins-source')) {
+          map.addSource('callout-pins-source', {
+            type: 'geojson',
+            data: calloutPinsGeoJson as any,
+          })
+        }
+        if (!map.getSource('regional-labels-source')) {
+          map.addSource('regional-labels-source', {
+            type: 'geojson',
+            data: regionalLabelsGeoJson as any,
+          })
+        }
+
+        // 1-2. 3D 폴리곤 레이어 (fill-extrusion)
+        if (!map.getLayer('regional-polygons-native')) {
+          map.addLayer({
+            id: 'regional-polygons-native',
+            type: 'fill-extrusion',
+            source: 'vietnam-regions-source',
+            paint: {
+              'fill-extrusion-color': ['get', 'color'],
+              'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
+              'fill-extrusion-base': 0,
+              'fill-extrusion-opacity': 1.0,
+              'fill-extrusion-vertical-gradient': true,
+            },
+          })
+        }
+
+        // 1-3. 격자 기둥 레이어 (fill-extrusion)
+        if (!map.getLayer('kma-grid-columns-native')) {
+          map.addLayer({
+            id: 'kma-grid-columns-native',
+            type: 'fill-extrusion',
+            source: 'kma-grid-source',
+            paint: {
+              'fill-extrusion-color': ['get', 'color'],
+              'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
+              'fill-extrusion-base': 0,
+              'fill-extrusion-opacity': 0.95,
+              'fill-extrusion-vertical-gradient': true,
+            },
+          })
+        }
+
+        // 1-4. 측정지점 핀 레이어 (circle)
+        if (!map.getLayer('callout-pins-native')) {
+          map.addLayer({
+            id: 'callout-pins-native',
+            type: 'circle',
+            source: 'callout-pins-source',
+            paint: {
+              'circle-radius': [
+                'case',
+                ['==', ['get', 'id'], selectedStationId],
+                6.5,
+                3.8,
+              ],
+              'circle-color': [
+                'case',
+                ['==', ['get', 'id'], selectedStationId],
+                '#1a75ff',
+                '#f8fbff',
+              ],
+              'circle-stroke-width': 1.8,
+              'circle-stroke-color': '#111820',
+            },
+          })
+        }
+
+        // 1-5. 말풍선 아이콘 레이어 (symbol)
+        if (!map.getLayer('callout-labels-native')) {
+          map.addLayer({
+            id: 'callout-labels-native',
+            type: 'symbol',
+            source: 'callout-pins-source',
+            layout: {
+              'icon-image': ['concat', 'station-callout-', ['get', 'id']],
+              'icon-size': 1.0,
+              'icon-anchor': 'bottom',
+              'icon-offset': [0, -4],
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+            },
+          })
+        }
+
+        // 1-6. 광역지역 이름 라벨 레이어 (symbol)
+        if (!map.getLayer('regional-labels-native')) {
+          map.addLayer({
+            id: 'regional-labels-native',
+            type: 'symbol',
+            source: 'regional-labels-source',
+            layout: {
+              'text-field': ['get', 'text'],
+              'text-size': 13.5,
+              'text-anchor': 'center',
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            },
+            paint: {
+              'text-color': '#f8fbff',
+              'text-halo-color': '#050e18',
+              'text-halo-width': 1.8,
+            },
+          })
+        }
+
+        // [CRITICAL FIX] Map sources are created; immediately populate data to avoid asynchronous React lifecycle delay
+        const regionSource = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
+        if (regionSource) regionSource.setData(regionalFeaturesGeoJson as any)
+
+        const gridSource = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
+        if (gridSource) gridSource.setData(gridGeoJson as any)
+
+        const pinsSource = map.getSource('callout-pins-source') as maplibregl.GeoJSONSource
+        if (pinsSource) pinsSource.setData(calloutPinsGeoJson as any)
+
+        const labelsSource = map.getSource('regional-labels-source') as maplibregl.GeoJSONSource
+        if (labelsSource) labelsSource.setData(regionalLabelsGeoJson as any)
+
+        map.triggerRepaint()
+        setMapLayersInitialized(true)
+        console.log('Map layers successfully initialized.')
       } catch (err) {
-        console.warn('Failed to pre-load callout images:', err)
+        console.error('Failed to initialize map layers, retrying in 200ms...', err)
+        if (!cancelled && retryCount < 5) {
+          retryCount++
+          setTimeout(initMapLayers, 200)
+        }
       }
-
-      // 1-1. 소스 등록
-      if (!map.getSource('vietnam-regions-source')) {
-        map.addSource('vietnam-regions-source', {
-          type: 'geojson',
-          data: regionalFeaturesGeoJson as any,
-        })
-      }
-      if (!map.getSource('kma-grid-source')) {
-        map.addSource('kma-grid-source', {
-          type: 'geojson',
-          data: gridGeoJson as any,
-        })
-      }
-      if (!map.getSource('callout-pins-source')) {
-        map.addSource('callout-pins-source', {
-          type: 'geojson',
-          data: calloutPinsGeoJson as any,
-        })
-      }
-      if (!map.getSource('regional-labels-source')) {
-        map.addSource('regional-labels-source', {
-          type: 'geojson',
-          data: regionalLabelsGeoJson as any,
-        })
-      }
-
-      // 1-2. 3D 폴리곤 레이어 (fill-extrusion)
-      if (!map.getLayer('regional-polygons-native')) {
-        map.addLayer({
-          id: 'regional-polygons-native',
-          type: 'fill-extrusion',
-          source: 'vietnam-regions-source',
-          paint: {
-            'fill-extrusion-color': ['get', 'color'],
-            'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
-            'fill-extrusion-base': 0,
-            'fill-extrusion-opacity': 1.0,
-            'fill-extrusion-vertical-gradient': true,
-          },
-        })
-      }
-
-      // 1-3. 격자 기둥 레이어 (fill-extrusion)
-      if (!map.getLayer('kma-grid-columns-native')) {
-        map.addLayer({
-          id: 'kma-grid-columns-native',
-          type: 'fill-extrusion',
-          source: 'kma-grid-source',
-          paint: {
-            'fill-extrusion-color': ['get', 'color'],
-            'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
-            'fill-extrusion-base': 0,
-            'fill-extrusion-opacity': 0.95,
-            'fill-extrusion-vertical-gradient': true,
-          },
-        })
-      }
-
-      // 1-4. 측정지점 핀 레이어 (circle)
-      if (!map.getLayer('callout-pins-native')) {
-        map.addLayer({
-          id: 'callout-pins-native',
-          type: 'circle',
-          source: 'callout-pins-source',
-          paint: {
-            'circle-radius': [
-              'case',
-              ['==', ['get', 'id'], selectedStationId],
-              6.5,
-              3.8,
-            ],
-            'circle-color': [
-              'case',
-              ['==', ['get', 'id'], selectedStationId],
-              '#1a75ff',
-              '#f8fbff',
-            ],
-            'circle-stroke-width': 1.8,
-            'circle-stroke-color': '#111820',
-          },
-        })
-      }
-
-      // 1-5. 말풍선 아이콘 레이어 (symbol)
-      if (!map.getLayer('callout-labels-native')) {
-        map.addLayer({
-          id: 'callout-labels-native',
-          type: 'symbol',
-          source: 'callout-pins-source',
-          layout: {
-            'icon-image': ['concat', 'station-callout-', ['get', 'id']],
-            'icon-size': 1.0,
-            'icon-anchor': 'bottom',
-            'icon-offset': [0, -4],
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true,
-          },
-        })
-      }
-
-      // 1-6. 광역지역 이름 라벨 레이어 (symbol)
-      if (!map.getLayer('regional-labels-native')) {
-        map.addLayer({
-          id: 'regional-labels-native',
-          type: 'symbol',
-          source: 'regional-labels-source',
-          layout: {
-            'text-field': ['get', 'text'],
-            'text-size': 13.5,
-            'text-anchor': 'center',
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-          },
-          paint: {
-            'text-color': '#f8fbff',
-            'text-halo-color': '#050e18',
-            'text-halo-width': 1.8,
-          },
-        })
-      }
-
-      // [CRITICAL FIX] Map sources are created; immediately populate data to avoid asynchronous React lifecycle delay
-      const regionSource = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
-      if (regionSource) regionSource.setData(regionalFeaturesGeoJson as any)
-
-      const gridSource = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
-      if (gridSource) gridSource.setData(gridGeoJson as any)
-
-      const pinsSource = map.getSource('callout-pins-source') as maplibregl.GeoJSONSource
-      if (pinsSource) pinsSource.setData(calloutPinsGeoJson as any)
-
-      const labelsSource = map.getSource('regional-labels-source') as maplibregl.GeoJSONSource
-      if (labelsSource) labelsSource.setData(regionalLabelsGeoJson as any)
-
-      map.triggerRepaint()
-
-      setMapLayersInitialized(true)
     }
 
     if (map.isStyleLoaded()) {
-      initMapLayers()
+      void initMapLayers()
     } else {
-      map.once('style.load', initMapLayers)
+      map.once('style.load', () => {
+        void initMapLayers()
+      })
+    }
+
+    return () => {
+      cancelled = true
     }
   }, [mapStyleLoaded, mapTheme])
 
