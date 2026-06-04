@@ -674,7 +674,7 @@
 .timeline-meta {
   display: grid;
   gap: 1px;
-  min-width: 126px;
+  min-width: 200px;
 }
 
 .timeline-meta strong,

@@ -250,37 +250,47 @@ function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi')
   const now = new Date()
   const frames: KmaFrame[] = []
   
-  for (let i = 7; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 3 * 60 * 60 * 1000)
+  // 1. 현재상태 (실황) 프레임 추가 (Index 0)
+  const timeNow = new Date(now.getTime())
+  const hourNow = timeNow.getHours()
+  const labelNow = `실황 ${String(hourNow).padStart(2, '0')}:00`
+  const monthNow = String(timeNow.getMonth() + 1).padStart(2, '0')
+  const dayNow = String(timeNow.getDate()).padStart(2, '0')
+  const dateStrNow = `${timeNow.getFullYear()}.${monthNow}.${dayNow} ${String(hourNow).padStart(2, '0')}:00`
+  
+  frames.push({
+    id: `${scenario.id}-mock-now`,
+    label: labelNow,
+    updatedAt: dateStrNow,
+    source: translations[lang]['status_sample'] || '샘플 실황 데이터',
+    points: scenario.points,
+  })
+
+  // 2. 예후 예측 (예보) 프레임들 추가 (Index 1 ~ 6)
+  for (let i = 1; i <= 6; i++) {
+    const time = new Date(now.getTime() + i * 60 * 60 * 1000)
     const hour = time.getHours()
     
-    // Sine wave offset to simulate natural meteorological cycle (peak at 14:00, trough at 05:00)
+    // Sine wave offset to simulate natural meteorological cycle
     const t = (hour - 5) / 24
     const cycle = Math.sin(t * 2 * Math.PI - Math.PI / 2)
     
     const points = scenario.points.map((point) => {
-      const range = (scenario.maxValue - scenario.minValue) * 0.15 // 15% amplitude
+      const range = (scenario.maxValue - scenario.minValue) * 0.15
       let val = point.value + cycle * range
-      
-      // Add slight noise
       val += (Math.random() - 0.5) * (range * 0.1)
-      
       val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
       val = Math.round(val * 10) / 10
-      
-      return {
-        ...point,
-        value: val,
-      }
+      return { ...point, value: val }
     })
     
-    const label = `${String(hour).padStart(2, '0')}:00`
+    const label = `예보 ${String(hour).padStart(2, '0')}:00`
     const month = String(time.getMonth() + 1).padStart(2, '0')
     const day = String(time.getDate()).padStart(2, '0')
-    const dateStr = `${time.getFullYear()}.${month}.${day} ${label}`
+    const dateStr = `${time.getFullYear()}.${month}.${day} ${String(hour).padStart(2, '0')}:00`
     
     frames.push({
-      id: `${scenario.id}-mock-${i}`,
+      id: `${scenario.id}-mock-fcst-${i}`,
       label,
       updatedAt: dateStr,
       source: translations[lang]['simulation'] || 'AI 시뮬레이션 예보',
@@ -544,6 +554,44 @@ function translateLiveText(text: string | undefined, lang: Language): string {
     }
   }
   return processed
+}
+
+function formatTimebarLabel(updatedAt: string | undefined): { local: string; utc: string } {
+  if (!updatedAt) return { local: '', utc: '' }
+
+  const formatSingle = (timeStr: string) => {
+    const normalized = timeStr.trim().replace(/\./g, '-').replace(' ', 'T')
+    const iso = normalized.includes('+') || normalized.endsWith('Z') ? normalized : `${normalized}+07:00`
+    const date = new Date(iso)
+    if (isNaN(date.getTime())) {
+      return { local: timeStr, utc: '' }
+    }
+
+    const localYear = date.getFullYear()
+    const localMonth = String(date.getMonth() + 1).padStart(2, '0')
+    const localDay = String(date.getDate()).padStart(2, '0')
+    const localHour = String(date.getHours()).padStart(2, '0')
+    const localMin = String(date.getMinutes()).padStart(2, '0')
+    const localStr = `${localYear}.${localMonth}.${localDay} ${localHour}:${localMin} (ICT)`
+
+    const utcHour = String(date.getUTCHours()).padStart(2, '0')
+    const utcMin = String(date.getUTCMinutes()).padStart(2, '0')
+    const utcStr = `${utcHour}:${utcMin} (UTC)`
+
+    return { local: localStr, utc: utcStr }
+  }
+
+  if (updatedAt.includes(' ~ ')) {
+    const parts = updatedAt.split(' ~ ')
+    const start = formatSingle(parts[0])
+    const end = formatSingle(parts[1])
+    return {
+      local: `${parts[0]} ~ ${parts[1]} (ICT)`,
+      utc: `${start.utc.replace(' (UTC)', '')} ~ ${end.utc}`
+    }
+  }
+
+  return formatSingle(updatedAt)
 }
 
 function estimateTextWidth(value: string, size: number) {
@@ -2920,10 +2968,15 @@ function App() {
                   >
                     {isTimelinePlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
                   </button>
-                  <div className="timeline-meta">
-                    <strong>{translateLiveText(activeFrame?.label ?? '샘플', lang)}</strong>
-                    <span>{translateLiveText(activeFrame?.updatedAt ?? activeScenario.updatedAt, lang)}</span>
-                  </div>
+                  {(() => {
+                    const { local, utc } = formatTimebarLabel(activeFrame?.updatedAt ?? activeScenario.updatedAt);
+                    return (
+                      <div className="timeline-meta">
+                        <strong>{translateLiveText(activeFrame?.label ?? '샘플', lang)}</strong>
+                        <span>{local} {utc && `| ${utc}`}</span>
+                      </div>
+                    );
+                  })()}
                   <input
                     type="range"
                     min={0}
