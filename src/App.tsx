@@ -26,6 +26,8 @@ import {
   TrendingUp,
   Video,
   Wind,
+  ChevronDown,
+  ChevronUp,
   X,
 } from 'lucide-react'
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
@@ -246,39 +248,74 @@ function createDefaultCameraShots(): CameraShot[] {
   }))
 }
 
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
 function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi'): KmaFrame[] {
   const now = new Date()
+  
+  // Calculate Vietnam standard time (ICT, GMT+7) based on browser's UTC time
+  const utcTime = now.getTime() + now.getTimezoneOffset() * 60 * 1000
+  const timeNow = new Date(utcTime + 7 * 60 * 60 * 1000)
+  
   const frames: KmaFrame[] = []
   
   // 1. 현재상태 (실황) 프레임 추가 (Index 0)
-  const timeNow = new Date(now.getTime())
   const hourNow = timeNow.getHours()
   const labelNow = `실황 ${String(hourNow).padStart(2, '0')}:00`
   const monthNow = String(timeNow.getMonth() + 1).padStart(2, '0')
   const dayNow = String(timeNow.getDate()).padStart(2, '0')
   const dateStrNow = `${timeNow.getFullYear()}.${monthNow}.${dayNow} ${String(hourNow).padStart(2, '0')}:00`
   
+  // Generate deterministic observed values
+  const hourEpochNow = Math.floor(timeNow.getTime() / 3600000)
+  const pointsNow = scenario.points.map((point) => {
+    const range = (scenario.maxValue - scenario.minValue) * 0.15
+    const stationHash = point.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    const scenarioHash = scenario.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    const seed = hourEpochNow + stationHash + scenarioHash
+    const prngVal = seededRandom(seed) - 0.5
+    
+    // Observed doesn't have sine cycle offset (or has it based on current hour)
+    const t = (hourNow - 5) / 24
+    const cycle = Math.sin(t * 2 * Math.PI - Math.PI / 2)
+    let val = point.value + cycle * range
+    val += prngVal * (range * 0.1)
+    val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
+    val = Math.round(val * 10) / 10
+    
+    return { ...point, value: val }
+  })
+  
   frames.push({
     id: `${scenario.id}-mock-now`,
     label: labelNow,
     updatedAt: dateStrNow,
     source: translations[lang]['status_sample'] || '샘플 실황 데이터',
-    points: scenario.points,
+    points: pointsNow,
   })
 
   // 2. 예후 예측 (예보) 프레임들 추가 (Index 1 ~ 6)
   for (let i = 1; i <= 6; i++) {
-    const time = new Date(now.getTime() + i * 60 * 60 * 1000)
+    const time = new Date(timeNow.getTime() + i * 60 * 60 * 1000)
     const hour = time.getHours()
     
     // Sine wave offset to simulate natural meteorological cycle
     const t = (hour - 5) / 24
     const cycle = Math.sin(t * 2 * Math.PI - Math.PI / 2)
     
+    const hourEpoch = Math.floor(time.getTime() / 3600000)
     const points = scenario.points.map((point) => {
       const range = (scenario.maxValue - scenario.minValue) * 0.15
+      const stationHash = point.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      const scenarioHash = scenario.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      const seed = hourEpoch + stationHash + scenarioHash
+      const prngVal = seededRandom(seed) - 0.5
+      
       let val = point.value + cycle * range
-      val += (Math.random() - 0.5) * (range * 0.1)
+      val += prngVal * (range * 0.1)
       val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
       val = Math.round(val * 10) / 10
       return { ...point, value: val }
@@ -567,11 +604,12 @@ function formatTimebarLabel(updatedAt: string | undefined): { local: string; utc
       return { local: timeStr, utc: '' }
     }
 
-    const localYear = date.getFullYear()
-    const localMonth = String(date.getMonth() + 1).padStart(2, '0')
-    const localDay = String(date.getDate()).padStart(2, '0')
-    const localHour = String(date.getHours()).padStart(2, '0')
-    const localMin = String(date.getMinutes()).padStart(2, '0')
+    const vnDate = new Date(date.getTime() + 7 * 60 * 60 * 1000)
+    const localYear = vnDate.getUTCFullYear()
+    const localMonth = String(vnDate.getUTCMonth() + 1).padStart(2, '0')
+    const localDay = String(vnDate.getUTCDate()).padStart(2, '0')
+    const localHour = String(vnDate.getUTCHours()).padStart(2, '0')
+    const localMin = String(vnDate.getUTCMinutes()).padStart(2, '0')
     const localStr = `${localYear}.${localMonth}.${localDay} ${localHour}:${localMin} (ICT)`
 
     const utcHour = String(date.getUTCHours()).padStart(2, '0')
@@ -1067,6 +1105,7 @@ function App() {
   const [frameIndex, setFrameIndex] = useState(0)
   const [dataStatus, setDataStatus] = useState<{ key: string; arg?: any }>(() => ({ key: 'status_loading' }))
   const [mapLayersInitialized, setMapLayersInitialized] = useState(false)
+  const [isTimebarExpanded, setIsTimebarExpanded] = useState(true)
   const renderDataStatus = () => {
     const { key, arg } = dataStatus
     const template = translations[lang][key] || key
@@ -2882,7 +2921,7 @@ function App() {
         {showControls && (
           <>
             {overlayVisibility.timeline && timeline.length > 1 && (
-              <div className="timebar-panel" aria-label="기상 정보 시간 선택">
+              <div className={`timebar-panel ${isTimebarExpanded ? '' : 'collapsed'}`} aria-label="기상 정보 시간 선택">
                 {(() => {
                   const valRange = activeScenario.maxValue - activeScenario.minValue;
                   const selectedStation = activeScenario.points.find((p) => p.id === selectedStationId) || activeScenario.points[0];
@@ -2990,6 +3029,14 @@ function App() {
                     }}
                   />
                   <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>
+                  <button
+                    type="button"
+                    className="timebar-toggle"
+                    onClick={() => setIsTimebarExpanded((prev) => !prev)}
+                    title={isTimebarExpanded ? "차트 접기" : "차트 펼치기"}
+                  >
+                    {isTimebarExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
                 </div>
               </div>
             )}

@@ -220,8 +220,8 @@ async function getTimeline(scenarioId: string, forceRefresh = false, options: Ti
     return { ...(await cached.promise), cacheHit: true }
   }
 
-  // Set cache expiry to 10 minutes
-  const expiresAt = now + 10 * 60 * 1000
+  // Set cache expiry to 1 hour
+  const expiresAt = now + 60 * 60 * 1000
   const promise = fetchOpenMeteo(scenarioId, options)
   cache.set(cacheKey, { promise, expiresAt })
 

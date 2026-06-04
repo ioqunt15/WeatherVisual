@@ -639,7 +639,7 @@
   position: absolute;
   z-index: 7;
   left: 50%;
-  bottom: 66px;
+  bottom: 74px;
   transform: translateX(-50%);
   gap: 11px;
   width: min(650px, calc(100% - 180px));
@@ -652,6 +652,32 @@
   backdrop-filter: blur(14px);
   font-size: 12px;
   font-weight: 850;
+  transition: all 0.25s ease-in-out;
+}
+
+.timebar-panel.collapsed .timebar-chart-header,
+.timebar-panel.collapsed .trend-chart-svg {
+  display: none !important;
+}
+
+.timebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.timebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
 }
 
 .timeline-play {
