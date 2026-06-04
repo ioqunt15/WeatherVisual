@@ -25,6 +25,7 @@ export type GridCell = {
   lon: number
   lat: number
   value: number
+  direction?: number
 }
 
 type BaseGridCell = Omit<GridCell, 'value'>
@@ -92,6 +93,31 @@ function estimateValue(lon: number, lat: number, points: DisasterPoint[], maxVal
   return Math.min(maxValue, Math.max(0, Math.round(value / step) * step))
 }
 
+function estimateDirection(lon: number, lat: number, points: DisasterPoint[]) {
+  let sinSum = 0
+  let cosSum = 0
+  let weightSum = 0
+
+  for (const point of points) {
+    if (point.direction === undefined) continue
+    const rad = (point.direction * Math.PI) / 180
+    const lonDistance = (lon - point.lon) * Math.cos((lat * Math.PI) / 180) * 111
+    const latDistance = (lat - point.lat) * 111
+    const distance = Math.sqrt(lonDistance * lonDistance + latDistance * latDistance)
+    const weight = 1 / Math.max(distance, 4.5) ** 2.25
+    
+    sinSum += Math.sin(rad) * weight
+    cosSum += Math.cos(rad) * weight
+    weightSum += weight
+  }
+
+  if (weightSum === 0) return 0
+  const avgSin = sinSum / weightSum
+  const avgCos = cosSum / weightSum
+  let angle = (Math.atan2(avgSin, avgCos) * 180) / Math.PI
+  return Math.round((angle + 360) % 360)
+}
+
 export function buildVietnamGrid(scenario: DisasterScenario, geoJson: VietnamGeoJson | null): GridCell[] {
   if (!geoJson || scenario.id === 'sst' || scenario.id === 'wave') {
     return []
@@ -102,6 +128,7 @@ export function buildVietnamGrid(scenario: DisasterScenario, geoJson: VietnamGeo
   const lowValueThreshold =
     maxPointValue < scenario.maxValue * 0.12 ? 0 : Math.min(scenario.maxValue * 0.035, maxPointValue * 0.15)
   const cells: GridCell[] = []
+  const isWindScenario = ['wind', 'forecast_wind', 'gust', 'typhoon'].includes(scenario.id)
 
   for (const baseCell of baseCells) {
     const value = estimateValue(baseCell.lon, baseCell.lat, scenario.points, scenario.maxValue)
@@ -110,10 +137,13 @@ export function buildVietnamGrid(scenario: DisasterScenario, geoJson: VietnamGeo
       continue
     }
 
+    const direction = isWindScenario ? estimateDirection(baseCell.lon, baseCell.lat, scenario.points) : undefined
+
     cells.push({
       ...baseCell,
       id: `${scenario.id}-${baseCell.id}`,
       value,
+      direction,
     })
   }
 

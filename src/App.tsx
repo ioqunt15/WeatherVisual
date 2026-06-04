@@ -31,12 +31,12 @@ import {
   X,
   Gauge,
   Cloud,
-  Waves,
 } from 'lucide-react'
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
-import { scenarios, type DisasterPoint, type DisasterScenario } from './data/scenarios'
+import { scenarios, standardStations, type DisasterPoint, type DisasterScenario } from './data/scenarios'
+import { historicalTyphoons, type HistoricalTyphoon } from './data/typhoons'
 import { createMapStyle, mapThemes, type MapThemeId } from './data/mapThemes'
 import { buildVietnamGrid, type GridCell, type VietnamGeoJson } from './utils/vietnamGrid'
 import { rgbaToCss, valueToSteppedColor } from './utils/color'
@@ -256,6 +256,117 @@ function seededRandom(seed: number): number {
   return x - Math.floor(x);
 }
 
+function getHistoricalTyphoonPathData(typhoon: HistoricalTyphoon, frameIdx: number) {
+  const currentPoint = typhoon.points[frameIdx] || typhoon.points[0]
+  const currentCenter: [number, number] = [currentPoint.lon, currentPoint.lat]
+  
+  const history: [number, number][] = typhoon.points
+    .slice(0, frameIdx + 1)
+    .map(p => [p.lon, p.lat] as [number, number])
+    
+  const forecast: [number, number][] = typhoon.points
+    .slice(frameIdx + 1)
+    .map(p => [p.lon, p.lat] as [number, number])
+    
+  const cones = typhoon.points
+    .slice(frameIdx + 1)
+    .map((p, idx) => {
+      return {
+        center: [p.lon, p.lat] as [number, number],
+        radiusKm: (idx + 1) * 35 + 40
+      }
+    })
+    
+  return {
+    currentCenter,
+    history,
+    forecast,
+    cones
+  }
+}
+
+function generateTyphoonTimeline(typhoonId: string, lang: Language): KmaFrame[] {
+  if (typhoonId === 'live') {
+    const now = new Date()
+    const utcTime = now.getTime() + now.getTimezoneOffset() * 60 * 1000
+    const timeNow = new Date(utcTime + 7 * 60 * 60 * 1000)
+    const hourNow = timeNow.getHours()
+    const monthNow = String(timeNow.getMonth() + 1).padStart(2, '0')
+    const dayNow = String(timeNow.getDate()).padStart(2, '0')
+    const dateStrNow = `${timeNow.getFullYear()}.${monthNow}.${dayNow} ${String(hourNow).padStart(2, '0')}:00`
+    
+    const points = standardStations.map((station: Omit<DisasterPoint, 'value'>) => {
+      const stationHash = station.id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
+      const ambient = 2.0 + seededRandom(stationHash) * 2.0
+      let direction = undefined
+      if (station.lat > 19) direction = 230
+      else if (station.lat > 14) direction = 250
+      else direction = 270
+      
+      return {
+        ...station,
+        value: Math.round(ambient * 10) / 10,
+        direction
+      }
+    })
+
+    return [
+      {
+        id: 'typhoon-live-empty',
+        label: lang === 'ko' ? '실황' : lang === 'vi' ? 'Thực tế' : 'Live',
+        updatedAt: dateStrNow,
+        source: lang === 'ko' ? '태풍 감시 시스템' : lang === 'vi' ? 'Hệ thống giám sát bão' : 'Typhoon Surveillance System',
+        points
+      }
+    ]
+  }
+
+  const typhoon = historicalTyphoons.find(t => t.id === typhoonId) || historicalTyphoons[0]
+  
+  return typhoon.points.map((pt, idx) => {
+    const points = standardStations.map((station: Omit<DisasterPoint, 'value'>) => {
+      const lonDistance = (station.lon - pt.lon) * Math.cos((pt.lat * Math.PI) / 180) * 111
+      const latDistance = (station.lat - pt.lat) * 111
+      const distance = Math.sqrt(lonDistance * lonDistance + latDistance * latDistance)
+      
+      const R = pt.windRadius || 200
+      const Vmax = pt.wind || 40
+      
+      let Vcyclone = 0
+      if (distance < 15) {
+        Vcyclone = Vmax * (distance / 15)
+      } else {
+        Vcyclone = Vmax * Math.pow(R / (R + distance - 15), 0.75)
+      }
+      
+      const stationHash = station.id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
+      const seed = idx + stationHash
+      const ambient = 2.0 + seededRandom(seed) * 2.0
+      const totalWind = Math.round((ambient + Vcyclone) * 10) / 10
+      
+      const v_x = -latDistance + 0.35 * (-lonDistance)
+      const v_y = lonDistance + 0.35 * (-latDistance)
+      const angleRad = Math.atan2(v_y, v_x)
+      let angleDeg = 90 - (angleRad * 180) / Math.PI
+      angleDeg = Math.round((angleDeg + 360) % 360)
+      
+      return {
+        ...station,
+        value: totalWind,
+        direction: angleDeg
+      }
+    })
+    
+    return {
+      id: `${typhoon.id}-frame-${idx}`,
+      label: pt.timeLabel,
+      updatedAt: pt.timeLabel,
+      source: lang === 'ko' ? '태풍 역사 기록' : lang === 'vi' ? 'Lịch sử bão' : 'Historical Track',
+      points
+    }
+  })
+}
+
 function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi'): KmaFrame[] {
   const now = new Date()
   
@@ -447,7 +558,12 @@ function buildGridGeoJson(cells: GridCell[], cellSizeMeters: number) {
   }
 }
 
-const addSvgImageToMap = (map: maplibregl.Map, id: string, svgString: string): Promise<void> => {
+const addSvgImageToMap = (
+  map: maplibregl.Map,
+  id: string,
+  svgString: string,
+  options: { sdf?: boolean } = {}
+): Promise<void> => {
   return new Promise((resolve) => {
     const img = new Image()
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
@@ -456,7 +572,7 @@ const addSvgImageToMap = (map: maplibregl.Map, id: string, svgString: string): P
       if (map.hasImage(id)) {
         map.removeImage(id)
       }
-      map.addImage(id, img)
+      map.addImage(id, img, options)
       URL.revokeObjectURL(url)
       resolve()
     }
@@ -1261,7 +1377,7 @@ function getTyphoonPathData(epochHour: number) {
     return [lon, lat]
   }
 
-  const currentCenter = centerForEpoch(epochHour)
+  const currentCenter = centerForEpoch(epochHour) as [number, number]
 
   const history: [number, number][] = []
   for (let i = -12; i <= 0; i++) {
@@ -1328,6 +1444,10 @@ function App() {
   const recordingChunksRef = useRef<Blob[]>([])
   const [scenarioId, setScenarioId] = useState<DisasterScenario['id']>('temperature')
   const [selectedStationId, setSelectedStationId] = useState<string>('hanoi')
+  const [selectedYear, setSelectedYear] = useState<number>(2024)
+  const [selectedTyphoonId, setSelectedTyphoonId] = useState<string>('live')
+  const [overlayWind, setOverlayWind] = useState<boolean>(false)
+  const particleCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const [lang, setLang] = useState<Language>('vi')
   const [mapTheme, setMapTheme] = useState<MapThemeId>('satellite')
   const [regionLayer, setRegionLayer] = useState<RegionLayerId>('stations')
@@ -1405,7 +1525,20 @@ function App() {
   useEffect(() => {
     scenarioRef.current = scenario
   }, [scenario])
-  const scriptText = scriptTexts[scenario.id] ?? createScriptText(scenario)
+  const scriptText = useMemo(() => {
+    const base = scriptTexts[scenario.id] ?? createScriptText(scenario)
+    if (scenario.id === 'typhoon' && selectedTyphoonId !== 'live') {
+      const activeTyphoon = historicalTyphoons.find(t => t.id === selectedTyphoonId)
+      if (activeTyphoon) {
+        return {
+          title: lang === 'ko' ? '과거 태풍 분석' : lang === 'vi' ? 'Phân tích bão lịch sử' : 'Historical Typhoon Analysis',
+          headline: activeTyphoon.name[lang] || activeTyphoon.name.en,
+          subtitle: lang === 'ko' ? '기상 역사 데이터 기반 경로 및 세기 정밀 분석' : lang === 'vi' ? 'Phân tích chính xác đường đi và cường độ dựa trên dữ liệu lịch sử' : 'Precise path and intensity analysis based on historical meteorological data'
+        }
+      }
+    }
+    return base
+  }, [scriptTexts, scenario.id, selectedTyphoonId, lang])
   const rainRangeHours = useMemo(() => getRangeHours(rainRangeDraft), [rainRangeDraft])
 
   const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
@@ -1420,13 +1553,47 @@ function App() {
     [activeFrame, scenario],
   )
   const typhoonData = useMemo(() => {
+    if (scenario.id === 'typhoon') {
+      if (selectedTyphoonId === 'live') {
+        return {
+          lat: 0,
+          lon: 0,
+          wind: 0,
+          pressure: 0,
+          speedMovement: 0,
+          dirMovement: { ko: '없음', vi: 'Không có', en: 'None' },
+          windRadius: 0,
+          pathData: {
+            currentCenter: [0, 0] as [number, number],
+            history: [] as [number, number][],
+            forecast: [] as [number, number][],
+            cones: [] as { center: [number, number]; radiusKm: number }[]
+          }
+        }
+      }
+
+      const typhoon = historicalTyphoons.find(t => t.id === selectedTyphoonId) || historicalTyphoons[0]
+      const frameIdx = frameIndex < typhoon.points.length ? frameIndex : 0
+      const currentPoint = typhoon.points[frameIdx]
+      const pathData = getHistoricalTyphoonPathData(typhoon, frameIdx)
+      
+      return {
+        lat: currentPoint.lat,
+        lon: currentPoint.lon,
+        wind: currentPoint.wind,
+        pressure: currentPoint.pressure,
+        speedMovement: currentPoint.speedMovement,
+        dirMovement: currentPoint.dirMovement,
+        windRadius: currentPoint.windRadius,
+        pathData
+      }
+    }
+    
     const dateStr = activeFrame?.updatedAt || activeScenario.updatedAt
     const cleanedDateStr = dateStr.replace(/\./g, '-').replace(' ', 'T')
     const date = new Date(cleanedDateStr + '+07:00')
     const epochHour = isNaN(date.getTime()) ? 494500 : Math.floor(date.getTime() / 3600000)
-    
     const pathData = getTyphoonPathData(epochHour)
-    
     const cycle = epochHour % 48
     const wind = Math.round((45 + Math.sin(cycle * 0.15) * 8) * 10) / 10
     const pressure = Math.round(960 - Math.sin(cycle * 0.15) * 15)
@@ -1436,9 +1603,12 @@ function App() {
       lon: pathData.currentCenter[0],
       wind,
       pressure,
+      speedMovement: 15,
+      dirMovement: { ko: '서북서', vi: 'Tây Tây Bắc', en: 'WNW' },
+      windRadius: 200,
       pathData
     }
-  }, [activeFrame, activeScenario])
+  }, [scenario, selectedTyphoonId, frameIndex, activeFrame, activeScenario])
   const legendTicks = useMemo(() => createLegendTicks(activeScenario), [activeScenario])
 
   useEffect(() => {
@@ -1453,50 +1623,13 @@ function App() {
 
   const gridCells = useMemo(() => {
     let cells: GridCell[] = []
-    if (activeScenario.id === 'sst' || activeScenario.id === 'wave') {
-      cells = []
-    } else if (activeFrame?.gridPoints?.length) {
+    if (activeFrame?.gridPoints?.length) {
       cells = activeFrame.gridPoints
-        .filter((point) => {
-          if (activeScenario.id === 'rain' && point.value <= 0) return false
-          return true
-        })
-        .map((point) => ({
-          id: `${activeScenario.id}-${point.id}`,
-          lon: point.lon,
-          lat: point.lat,
-          value: point.value,
-        }))
     } else {
       cells = buildVietnamGrid(activeScenario, vietnamGeoJson)
     }
-
-    // 황사/쯔엉사 군도: 측정지점(stations) 모드일 때만 단일 갪자 기둥 추가
-    // regions 모드에선 regionalFeaturesGeoJson에서 정사각형 컄럼으로 처리하므로 여기에선 제외
-    if (regionLayer === 'stations') {
-      const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
-      const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
-
-      if (hoangsaPt && !cells.some((c) => c.id.endsWith('hoangsa'))) {
-        cells.push({
-          id: `${activeScenario.id}-hoangsa`,
-          lon: hoangsaPt.lon,
-          lat: hoangsaPt.lat,
-          value: hoangsaPt.value,
-        })
-      }
-      if (truongsaPt && !cells.some((c) => c.id.endsWith('truongsa'))) {
-        cells.push({
-          id: `${activeScenario.id}-truongsa`,
-          lon: truongsaPt.lon,
-          lat: truongsaPt.lat,
-          value: truongsaPt.value,
-        })
-      }
-    }
-
     return cells
-  }, [activeFrame, activeScenario, vietnamGeoJson, regionLayer])
+  }, [activeFrame, activeScenario, vietnamGeoJson])
 
   const regionalFeatures = useMemo(() => buildRegionalFeatures(vietnamGeoJson, activeScenario), [activeScenario, vietnamGeoJson])
   const visibleCellCount = regionLayer === 'regions' ? regionalFeatures.length : gridCells.length
@@ -1520,8 +1653,6 @@ function App() {
       return [...points]
         .filter((point) => {
           if (activeScenario.id === 'rain' && point.value <= 0) return false
-          if (activeScenario.id === 'sst' && point.value <= 0) return false
-          if (activeScenario.id === 'wave' && point.value <= 0) return false
           return true
         })
         .sort((a, b) => b.value - a.value)
@@ -1546,8 +1677,6 @@ function App() {
       [...activeScenario.points]
         .filter((point) => {
           if (activeScenario.id === 'rain' && point.value <= 0) return false
-          if (activeScenario.id === 'sst' && point.value <= 0) return false
-          if (activeScenario.id === 'wave' && point.value <= 0) return false
           return true
         })
         .sort((a, b) => b.lat - a.lat)
@@ -1721,7 +1850,7 @@ function App() {
   }, [mapLayersInitialized])
 
   const typhoonGeoJson = useMemo(() => {
-    if (scenarioId !== 'typhoon' || regionLayer !== 'stations') {
+    if (scenarioId !== 'typhoon' || regionLayer !== 'stations' || selectedTyphoonId === 'live') {
       return {
         type: 'FeatureCollection',
         features: [],
@@ -1731,41 +1860,84 @@ function App() {
     const data = typhoonData.pathData
     const features: any[] = []
 
-    // 1. History Line String (past path)
-    features.push({
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: data.history,
-      },
-      properties: {
-        type: 'history-path',
-      },
-    })
-
-    // 2. Forecast Line String (future path)
-    features.push({
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: [data.currentCenter, ...data.forecast],
-      },
-      properties: {
-        type: 'forecast-path',
-      },
-    })
-
-    // 3. Error cones (forecast circles)
-    for (const cone of data.cones) {
+    if (data.history && data.history.length > 1) {
       features.push({
-        ...createGeoJsonCircle(cone.center, cone.radiusKm),
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: data.history,
+        },
         properties: {
-          type: 'error-cone',
+          type: 'history-path',
         },
       })
     }
 
-    // 4. Typhoon eye circle point
+    if (data.forecast && data.forecast.length > 0) {
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [data.currentCenter, ...data.forecast],
+        },
+        properties: {
+          type: 'forecast-path',
+        },
+      })
+    }
+
+    if (data.cones) {
+      for (const cone of data.cones) {
+        features.push({
+          ...createGeoJsonCircle(cone.center, cone.radiusKm),
+          properties: {
+            type: 'error-cone',
+          },
+        })
+      }
+    }
+
+    if (typhoonData.windRadius > 0) {
+      features.push({
+        ...createGeoJsonCircle(data.currentCenter, typhoonData.windRadius),
+        properties: {
+          type: 'wind-radius-circle',
+        },
+      })
+    }
+
+    const typhoon = historicalTyphoons.find(t => t.id === selectedTyphoonId) || historicalTyphoons[0]
+    const frameIdx = frameIndex < typhoon.points.length ? frameIndex : 0
+
+    const allPoints = [
+      ...typhoon.points.slice(0, frameIdx + 1).map((p, idx) => ({ ...p, isForecast: false, index: idx })),
+      ...typhoon.points.slice(frameIdx + 1).map((p, idx) => ({ ...p, isForecast: true, index: frameIdx + 1 + idx }))
+    ]
+
+    for (const pt of allPoints) {
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [pt.lon, pt.lat]
+        },
+        properties: {
+          type: 'track-point',
+          isForecast: pt.isForecast,
+          isCurrent: pt.index === frameIdx,
+          wind: pt.wind,
+          pressure: pt.pressure,
+          timeLabel: pt.timeLabel,
+          color: pt.wind < 17 ? '#4db6ac' : 
+                 pt.wind < 25 ? '#ffd54f' : 
+                 pt.wind < 33 ? '#ff9800' : 
+                 pt.wind < 50 ? '#ff1744' : '#d500f9',
+          label: `${pt.wind}m/s`
+        }
+      })
+    }
+
+    const typhoonNameTranslated = typhoon.name[lang] || typhoon.name.en
     features.push({
       type: 'Feature',
       geometry: {
@@ -1774,7 +1946,7 @@ function App() {
       },
       properties: {
         type: 'eye-point',
-        name: lang === 'ko' ? '태풍 야기' : lang === 'vi' ? 'Bão YAGI' : 'Typhoon YAGI',
+        name: typhoonNameTranslated,
         details: `${typhoonData.wind} m/s | ${typhoonData.pressure} hPa`,
       },
     })
@@ -1783,7 +1955,7 @@ function App() {
       type: 'FeatureCollection',
       features,
     }
-  }, [scenarioId, typhoonData, regionLayer, lang])
+  }, [scenarioId, typhoonData, regionLayer, lang, selectedTyphoonId, frameIndex])
 
   const calloutPinsGeoJson = useMemo(() => {
     const points = (overlayVisibility.callouts && regionLayer === 'stations') ? calloutPoints : []
@@ -1815,6 +1987,13 @@ function App() {
     let cancelled = false
     const controller = new AbortController()
     const requestId = (requestSeqRef.current += 1)
+
+    if (scenario.id === 'typhoon') {
+      setFrameIndex(0)
+      setTimeline(generateTyphoonTimeline(selectedTyphoonId, lang))
+      setDataStatus({ key: 'status_ai_forecast' })
+      return
+    }
 
     if (!scenario.kmaCategory) {
       setFrameIndex(0)
@@ -1860,7 +2039,7 @@ function App() {
       cancelled = true
       controller.abort()
     }
-  }, [rainRange, scenario, refreshNonce, lang])
+  }, [rainRange, scenario, refreshNonce, lang, selectedTyphoonId])
 
   // Mouse right click listener and context menu prevention
   useEffect(() => {
@@ -2079,7 +2258,11 @@ function App() {
     try {
       // 측정지점 격자 기둥: stations 모드에서만 표출
       if (map.getLayer('kma-grid-columns-native')) {
-        map.setLayoutProperty('kma-grid-columns-native', 'visibility', isStations ? 'visible' : 'none')
+        map.setLayoutProperty('kma-grid-columns-native', 'visibility', (isStations && !isWindScenario) ? 'visible' : 'none')
+      }
+      // 격자 바람 화살표: stations 모드 + 바람 시나리오에서만 표출
+      if (map.getLayer('kma-grid-wind-arrows')) {
+        map.setLayoutProperty('kma-grid-wind-arrows', 'visibility', (isStations && isWindScenario) ? 'visible' : 'none')
       }
       // 광역지역 폴리곤: regions 모드에서만 표출
       if (map.getLayer('regional-polygons-native')) {
@@ -2164,6 +2347,9 @@ function App() {
 
       // SVG 이미지 사전 로딩 (실패해도 레이어 등록은 계속 진행)
       try {
+        const arrowSvgSdf = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M12 2 L20 18 L12 14 L4 18 Z" fill="#ffffff"/></svg>'
+        await addSvgImageToMap(map, 'wind-arrow-sdf', arrowSvgSdf, { sdf: true })
+
         const points = overlayVisibility.callouts ? calloutPoints : []
         for (const point of points) {
           if (cancelled) return
@@ -2172,7 +2358,7 @@ function App() {
           await addSvgImageToMap(map, imageId, svgContent)
         }
       } catch (svgErr) {
-        console.warn('SVG pre-load failed (non-fatal, continuing):', svgErr)
+        console.warn('SVG/SDF pre-load failed (non-fatal, continuing):', svgErr)
       }
 
       try {
@@ -2220,7 +2406,7 @@ function App() {
             type: 'fill-extrusion',
             source: 'kma-grid-source',
             layout: {
-              'visibility': regionLayer === 'stations' ? 'visible' : 'none',
+              'visibility': (regionLayer === 'stations' && (!['wind', 'forecast_wind', 'gust', 'typhoon'].includes(scenarioId) || ['wind', 'forecast_wind', 'gust'].includes(scenarioId) || (scenarioId === 'typhoon' && overlayWind))) ? 'visible' : 'none',
             },
             paint: {
               'fill-extrusion-color': ['get', 'color'],
@@ -2230,6 +2416,36 @@ function App() {
               'fill-extrusion-base': 0,
               'fill-extrusion-opacity': 0.95,
               'fill-extrusion-vertical-gradient': true,
+            },
+          })
+        }
+
+        // 1-3b. 격자 바람 화살표 레이어 (symbol) - 바람/태풍 시나리오 + stations 모드에서만 표출
+        if (!map.getLayer('kma-grid-wind-arrows')) {
+          map.addLayer({
+            id: 'kma-grid-wind-arrows',
+            type: 'symbol',
+            source: 'kma-grid-source',
+            layout: {
+              'visibility': 'none',
+              'icon-image': 'wind-arrow-sdf',
+              'icon-rotate': ['get', 'direction'],
+              'icon-rotation-alignment': 'map',
+              'icon-size': [
+                'interpolate',
+                ['linear'],
+                ['get', 'value'],
+                0, 0.35,
+                15, 0.65,
+                40, 1.0,
+                75, 1.4
+              ],
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+            },
+            paint: {
+              'icon-color': ['get', 'color'],
+              'icon-opacity': 0.78,
             },
           })
         }
@@ -2394,7 +2610,7 @@ function App() {
             source: 'typhoon-source',
             filter: ['==', ['get', 'type'], 'eye-point'],
             layout: {
-              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+              'visibility': (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none',
               'text-field': ['concat', ['get', 'name'], '\n', ['get', 'details']],
               'text-size': 11.5,
               'text-offset': [0, 2.0],
@@ -2407,6 +2623,93 @@ function App() {
               'text-halo-color': '#07111b',
               'text-halo-width': 2.0,
             },
+          })
+        }
+
+        // 1-13. 태풍 물리적 크기 영역 채우기 (fill)
+        if (!map.getLayer('typhoon-wind-radius-fill')) {
+          map.addLayer({
+            id: 'typhoon-wind-radius-fill',
+            type: 'fill',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'wind-radius-circle'],
+            layout: {
+              'visibility': (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none',
+            },
+            paint: {
+              'fill-color': '#ff9100',
+              'fill-opacity': 0.08,
+            },
+          })
+        }
+
+        // 1-14. 태풍 물리적 크기 테두리 (line)
+        if (!map.getLayer('typhoon-wind-radius-outline')) {
+          map.addLayer({
+            id: 'typhoon-wind-radius-outline',
+            type: 'line',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'wind-radius-circle'],
+            layout: {
+              'visibility': (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none',
+            },
+            paint: {
+              'line-color': '#ff9100',
+              'line-width': 1.5,
+              'line-dasharray': [4, 2],
+            },
+          })
+        }
+
+        // 1-15. 태풍 이동 경로상 관측점들 (circle)
+        if (!map.getLayer('typhoon-track-points')) {
+          map.addLayer({
+            id: 'typhoon-track-points',
+            type: 'circle',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'track-point'],
+            layout: {
+              'visibility': (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none',
+            },
+            paint: {
+              'circle-radius': [
+                'case',
+                ['get', 'isCurrent'], 8,
+                4.5
+              ],
+              'circle-color': ['get', 'color'],
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 1.2,
+              'circle-opacity': [
+                'case',
+                ['get', 'isForecast'], 0.6,
+                1.0
+              ]
+            }
+          })
+        }
+
+        // 1-16. 태풍 이동 경로상 관측점 세기 라벨 (symbol)
+        if (!map.getLayer('typhoon-track-labels')) {
+          map.addLayer({
+            id: 'typhoon-track-labels',
+            type: 'symbol',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'track-point'],
+            layout: {
+              'visibility': (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none',
+              'text-field': ['get', 'label'],
+              'text-size': 9,
+              'text-offset': [0, -1.2],
+              'text-anchor': 'bottom',
+              'text-allow-overlap': false,
+              'text-ignore-placement': false,
+            },
+            paint: {
+              'text-color': '#ffffff',
+              'text-halo-color': '#000000',
+              'text-halo-width': 1.5,
+            }
           })
         }
 
@@ -2474,14 +2777,18 @@ function App() {
         typhoonSource.setData(typhoonGeoJson as any)
       }
 
-      const typhoonVisibility = scenarioId === 'typhoon' ? 'visible' : 'none'
+      const typhoonVisibility = (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none'
       const typhoonLayers = [
         'typhoon-cones-fill',
         'typhoon-cones-outline',
         'typhoon-history-line',
         'typhoon-forecast-line',
         'typhoon-eye-circle',
-        'typhoon-eye-label'
+        'typhoon-eye-label',
+        'typhoon-wind-radius-fill',
+        'typhoon-wind-radius-outline',
+        'typhoon-track-points',
+        'typhoon-track-labels'
       ]
       for (const layerId of typhoonLayers) {
         if (map.getLayer(layerId)) {
@@ -2526,6 +2833,170 @@ function App() {
     scenarioId,
   ])
 
+
+  // Windy-style particle flow animation loop
+  useEffect(() => {
+    const canvas = particleCanvasRef.current
+    const map = mapRef.current
+    if (!canvas || !map) return
+
+    const isWind = ['wind', 'forecast_wind', 'gust'].includes(scenarioId)
+    const isTyphoonWind = scenarioId === 'typhoon' && overlayWind
+    
+    if (!isWind && !isTyphoonWind) {
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+      }
+      return
+    }
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    let animationId: number
+    let running = true
+
+    const particleCount = 800
+    const particles: Array<{
+      x: number
+      y: number
+      life: number
+      age: number
+    }> = []
+
+    const resizeCanvas = () => {
+      const rect = map.getContainer().getBoundingClientRect()
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width
+        canvas.height = rect.height
+      }
+    }
+    resizeCanvas()
+
+    const estimateValueLocal = (lon: number, lat: number, points: DisasterPoint[]) => {
+      let sumVal = 0
+      let sumWeight = 0
+      for (const p of points) {
+        const dLon = (lon - p.lon) * Math.cos((lat * Math.PI) / 180) * 111
+        const dLat = (lat - p.lat) * 111
+        const dist = Math.sqrt(dLon * dLon + dLat * dLat)
+        const weight = 1 / Math.max(dist, 10.0) ** 2
+        sumVal += p.value * weight
+        sumWeight += weight
+      }
+      return sumWeight === 0 ? 0 : sumVal / sumWeight
+    }
+
+    const estimateDirectionLocal = (lon: number, lat: number, points: DisasterPoint[]) => {
+      let sinSum = 0
+      let cosSum = 0
+      let weightSum = 0
+      for (const p of points) {
+        if (p.direction === undefined) continue
+        const rad = (p.direction * Math.PI) / 180
+        const dLon = (lon - p.lon) * Math.cos((lat * Math.PI) / 180) * 111
+        const dLat = (lat - p.lat) * 111
+        const dist = Math.sqrt(dLon * dLon + dLat * dLat)
+        const weight = 1 / Math.max(dist, 10.0) ** 2
+        sinSum += Math.sin(rad) * weight
+        cosSum += Math.cos(rad) * weight
+        weightSum += weight
+      }
+      if (weightSum === 0) return 0
+      return Math.round((Math.atan2(sinSum, cosSum) * 180) / Math.PI + 360) % 360
+    }
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        life: 30 + Math.random() * 50,
+        age: 0
+      })
+    }
+
+    const drawFrame = () => {
+      if (!running) return
+
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.globalCompositeOperation = 'source-over'
+
+      const points = activeScenario.points
+      const maxVal = activeScenario.maxValue || 25
+      const bearing = map.getBearing()
+      const width = canvas.width
+      const height = canvas.height
+
+      for (let i = 0; i < particleCount; i++) {
+        const p = particles[i]
+
+        if (p.age >= p.life || p.x < 0 || p.x > width || p.y < 0 || p.y > height) {
+          p.x = Math.random() * width
+          p.y = Math.random() * height
+          p.life = 30 + Math.random() * 50
+          p.age = 0
+        }
+
+        const lngLat = map.unproject([p.x, p.y])
+        
+        if (lngLat.lng < 98 || lngLat.lng > 120 || lngLat.lat < 6 || lngLat.lat > 25) {
+          p.x = Math.random() * width
+          p.y = Math.random() * height
+          p.life = 30 + Math.random() * 50
+          p.age = 0
+          continue
+        }
+
+        const speed = estimateValueLocal(lngLat.lng, lngLat.lat, points)
+        const direction = estimateDirectionLocal(lngLat.lng, lngLat.lat, points)
+
+        const angleScreen = ((direction - bearing) * Math.PI) / 180
+        const dx = Math.sin(angleScreen)
+        const dy = -Math.cos(angleScreen)
+
+        const speedFactor = 0.05 + (speed / maxVal) * 0.35
+        const stepX = dx * speedFactor * 10
+        const stepY = dy * speedFactor * 10
+
+        const nextX = p.x + stepX
+        const nextY = p.y + stepY
+
+        ctx.beginPath()
+        ctx.moveTo(p.x, p.y)
+        ctx.lineTo(nextX, nextY)
+        ctx.strokeStyle = `rgba(240, 248, 255, ${0.15 + (speed / maxVal) * 0.65})`
+        ctx.lineWidth = 0.8 + (speed / maxVal) * 1.5
+        ctx.stroke()
+
+        p.x = nextX
+        p.y = nextY
+        p.age++
+      }
+
+      animationId = requestAnimationFrame(drawFrame)
+    }
+
+    const handleMapChange = () => {
+      resizeCanvas()
+    }
+
+    map.on('move', handleMapChange)
+    map.on('zoom', handleMapChange)
+    map.on('resize', handleMapChange)
+
+    drawFrame()
+
+    return () => {
+      running = false
+      cancelAnimationFrame(animationId)
+      map.off('move', handleMapChange)
+      map.off('zoom', handleMapChange)
+      map.off('resize', handleMapChange)
+    }
+  }, [activeScenario, scenarioId, overlayWind, mapStyleLoaded, mapLayersInitialized])
 
   // 3. 3D 모드 전환 및 투영법 연동 + 애니메이션(columnReveal) 연동
   useEffect(() => {
@@ -3009,7 +3480,7 @@ function App() {
     {
       id: 'marine',
       title: '해양및재난감시',
-      scenarioIds: ['typhoon', 'sst', 'wave'],
+      scenarioIds: ['typhoon'],
     },
   ]
 
@@ -3034,8 +3505,6 @@ function App() {
     flood: AlertTriangle,
     drought: Flame,
     typhoon: RotateCw,
-    sst: Waves,
-    wave: Waves,
   }
 
   const selectScenario = (nextScenarioId: typeof scenarioId) => {
@@ -3075,6 +3544,7 @@ function App() {
     <main className={`broadcast-shell scenario-${scenario.id} map-${mapTheme} lang-${lang} ${!showControls ? 'controls-hidden' : ''}`}>
       <section className="stage" aria-label="재난 시각화 방송 화면">
         <div ref={mapContainerRef} className="map-canvas" />
+        <canvas ref={particleCanvasRef} className="wind-particle-canvas" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }} />
         <div className="map-vignette" />
         <div className="scanline" />
 
@@ -3173,41 +3643,181 @@ function App() {
             <aside className="typhoon-board-panel" aria-label={lang === 'ko' ? '태풍 정보 보드' : lang === 'vi' ? 'Thông tin bão' : 'Typhoon Status Board'}>
               <div className="panel-heading">
                 <RotateCw size={15} className="spin-icon" style={{ animation: 'spin 4s linear infinite' }} />
-                <span>{lang === 'ko' ? '태풍 실황 정보' : lang === 'vi' ? 'THÔNG TIN BÃO LIVE' : 'LIVE TYPHOON BOARD'}</span>
+                <span>
+                  {selectedTyphoonId === 'live'
+                    ? (lang === 'ko' ? '실시간 태풍 감시' : lang === 'vi' ? 'GIÁM SÁT BÃO LIVE' : 'LIVE TYPHOON MONITORING')
+                    : (lang === 'ko' ? '과거 태풍 분석' : lang === 'vi' ? 'PHÂN TÍCH BÃO LỊCH SỬ' : 'HISTORICAL TYPHOON ANALYSIS')}
+                </span>
               </div>
               <div className="typhoon-board-body">
-                <div className="typhoon-name-row">
-                  <h3>{lang === 'ko' ? '태풍 11호 "야기" (YAGI)' : lang === 'vi' ? 'Bão số 11 (YAGI)' : 'Typhoon YAGI (Class 3)'}</h3>
-                  <span className="danger-badge">{lang === 'ko' ? '매우 강' : lang === 'vi' ? 'Rất Mạnh' : 'Very Strong'}</span>
+                <div className="typhoon-search-board" style={{ borderBottom: '1px solid rgba(255, 23, 68, 0.25)', paddingBottom: '8px', marginBottom: '4px' }}>
+                  <div className="typhoon-select-row" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <div className="select-field" style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.6)', marginBottom: '2px', fontWeight: 'bold' }}>
+                        {lang === 'ko' ? '연도' : lang === 'vi' ? 'Năm' : 'Year'}
+                      </label>
+                      <select
+                        value={selectedYear}
+                        onChange={(e) => {
+                          const year = Number(e.target.value)
+                          setSelectedYear(year)
+                          const ofYear = historicalTyphoons.filter(t => t.year === year)
+                          if (ofYear.length > 0) {
+                            setSelectedTyphoonId(ofYear[0].id)
+                            setIsTimelinePlaying(false)
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          background: 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.18)',
+                          color: '#ffffff',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          padding: '3px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value={2024} style={{ background: '#0b131e', color: '#fff' }}>2024</option>
+                        <option value={2022} style={{ background: '#0b131e', color: '#fff' }}>2022</option>
+                        <option value={2020} style={{ background: '#0b131e', color: '#fff' }}>2020</option>
+                      </select>
+                    </div>
+
+                    <div className="select-field" style={{ flex: 2 }}>
+                      <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.6)', marginBottom: '2px', fontWeight: 'bold' }}>
+                        {lang === 'ko' ? '과거 기록 검색' : lang === 'vi' ? 'Cơ sở dữ liệu bão' : 'Historical Archive'}
+                      </label>
+                      <select
+                        value={selectedTyphoonId === 'live' ? '' : selectedTyphoonId}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setSelectedTyphoonId(e.target.value)
+                            setIsTimelinePlaying(false)
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          background: 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.18)',
+                          color: '#ffffff',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          padding: '3px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="" disabled style={{ background: '#0b131e', color: '#888' }}>
+                          {lang === 'ko' ? '-- 태풍 선택 --' : lang === 'vi' ? '-- Chọn cơn bão --' : '-- Select Typhoon --'}
+                        </option>
+                        {historicalTyphoons
+                          .filter(t => t.year === selectedYear)
+                          .map(t => (
+                            <option key={t.id} value={t.id} style={{ background: '#0b131e', color: '#fff' }}>
+                              {t.name[lang] || t.name.en}
+                            </option>
+                          ))
+                        }
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="wind-overlay-row" style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0 0' }}>
+                    <input
+                      type="checkbox"
+                      id="overlay-wind-checkbox"
+                      checked={overlayWind}
+                      onChange={(e) => setOverlayWind(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <label htmlFor="overlay-wind-checkbox" style={{ fontSize: '11px', color: '#f7f9fc', cursor: 'pointer', fontWeight: 800 }}>
+                      {lang === 'ko' ? '바람장 레이어 중첩 표시' : lang === 'vi' ? 'Chồng lớp trường gió' : 'Overlay Wind Layer'}
+                    </label>
+                  </div>
                 </div>
-                <div className="typhoon-stats-grid">
-                  <div className="typhoon-stat-item">
-                    <span className="stat-label">{lang === 'ko' ? '현재 위치' : lang === 'vi' ? 'Vị trí hiện tại' : 'Position'}</span>
-                    <span className="stat-value">{typhoonData.lat.toFixed(1)}°N, {typhoonData.lon.toFixed(1)}°E</span>
+
+                {selectedTyphoonId === 'live' ? (
+                  <div className="typhoon-status-msg" style={{ 
+                    background: 'rgba(100, 255, 180, 0.04)', 
+                    border: '1px dashed rgba(100, 255, 180, 0.25)', 
+                    padding: '12px 10px', 
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    marginTop: '5px'
+                  }}>
+                    <div style={{ fontSize: '12.5px', color: '#a3f3d2', fontWeight: 900, marginBottom: '6px' }}>
+                      ✔ {lang === 'ko' ? '기상 안정 상태' : lang === 'vi' ? 'Trạng thái thời tiết ổn định' : 'Weather Stable'}
+                    </div>
+                    <p style={{ margin: 0, fontSize: '11px', color: 'rgba(240,248,255,0.78)', lineHeight: 1.45 }}>
+                      {lang === 'ko' 
+                        ? '현재 베트남 및 감시 해역 내에 활동 중인 실시간 태풍이 없습니다. 분석하고 싶은 과거 기록을 검색해 조회할 수 있습니다.' 
+                        : lang === 'vi' 
+                        ? 'Hiện tại không có cơn bão nào hoạt động trong vùng biển Việt Nam. Bạn có thể tra cứu bão lịch sử từ thanh tìm kiếm.' 
+                        : 'No active typhoons in the monitoring area. You can look up past storm records using the search filter above.'}
+                    </p>
                   </div>
-                  <div className="typhoon-stat-item">
-                    <span className="stat-label">{lang === 'ko' ? '중심 기압' : lang === 'vi' ? 'Khí áp trung tâm' : 'Min Pressure'}</span>
-                    <span className="stat-value">{typhoonData.pressure} hPa</span>
-                  </div>
-                  <div className="typhoon-stat-item">
-                    <span className="stat-label">{lang === 'ko' ? '최대 풍속' : lang === 'vi' ? 'Gió mạnh nhất' : 'Max Wind Speed'}</span>
-                    <span className="stat-value">{typhoonData.wind} m/s ({Math.round(typhoonData.wind * 3.6)} km/h)</span>
-                  </div>
-                  <div className="typhoon-stat-item">
-                    <span className="stat-label">{lang === 'ko' ? '이동 속도' : lang === 'vi' ? 'Tốc độ di chuyển' : 'Movement'}</span>
-                    <span className="stat-value">{lang === 'ko' ? '서북서 15 km/h' : lang === 'vi' ? 'Tây Tây Bắc 15 km/h' : 'WNW 15 km/h'}</span>
-                  </div>
-                </div>
-                <div className="typhoon-warning-box">
-                  <strong>{lang === 'ko' ? '특보 상황 및 영향권:' : lang === 'vi' ? 'Cảnh báo & Ảnh hưởng:' : 'Warnings & Impacts:'}</strong>
-                  <p style={{ margin: '5px 0 0', fontSize: '11px', lineHeight: '1.4', color: 'rgba(244,248,255,0.85)' }}>
-                    {lang === 'ko'
-                      ? '황사 군도 및 베트남 중북부 연안 해상 풍랑 및 침수 위험 극심. 항해 금지 및 사전 대피 요망.'
-                      : lang === 'vi'
-                      ? 'Nguy cơ nước dâng, sóng lớn tại Quần đảo Hoàng Sa và vùng biển ven bờ miền Trung. Nghiêm cấm tàu thuyền ra khơi.'
-                      : 'High risk of storm surge and heavy waves around Paracel Islands and North-Central coast. Sailing prohibited.'}
-                  </p>
-                </div>
+                ) : (
+                  <>
+                    <div className="typhoon-name-row">
+                      <h3>{historicalTyphoons.find(t => t.id === selectedTyphoonId)?.name[lang]}</h3>
+                      <span className="danger-badge">{historicalTyphoons.find(t => t.id === selectedTyphoonId)?.category[lang]}</span>
+                    </div>
+                    <div className="typhoon-stats-grid">
+                      <div className="typhoon-stat-item">
+                        <span className="stat-label">{lang === 'ko' ? '현재 위치' : lang === 'vi' ? 'Vị trí hiện tại' : 'Position'}</span>
+                        <span className="stat-value">{typhoonData.lat.toFixed(1)}°N, {typhoonData.lon.toFixed(1)}°E</span>
+                      </div>
+                      <div className="typhoon-stat-item">
+                        <span className="stat-label">{lang === 'ko' ? '중심 기압' : lang === 'vi' ? 'Khí áp trung tâm' : 'Min Pressure'}</span>
+                        <span className="stat-value">{typhoonData.pressure} hPa</span>
+                      </div>
+                      <div className="typhoon-stat-item">
+                        <span className="stat-label">{lang === 'ko' ? '최대 풍속' : lang === 'vi' ? 'Gió mạnh nhất' : 'Max Wind'}</span>
+                        <span className="stat-value">{typhoonData.wind} m/s</span>
+                      </div>
+                      <div className="typhoon-stat-item">
+                        <span className="stat-label">{lang === 'ko' ? '폭풍 반경' : lang === 'vi' ? 'Bán kính bão' : 'Storm Radius'}</span>
+                        <span className="stat-value">{typhoonData.windRadius} km</span>
+                      </div>
+                      <div className="typhoon-stat-item" style={{ gridColumn: 'span 2' }}>
+                        <span className="stat-label">{lang === 'ko' ? '이동 방향 및 속도' : lang === 'vi' ? 'Tốc độ & Hướng di chuyển' : 'Movement'}</span>
+                        <span className="stat-value">{typhoonData.dirMovement[lang] || typhoonData.dirMovement.en} {typhoonData.speedMovement} km/h</span>
+                      </div>
+                    </div>
+                    <div className="typhoon-warning-box">
+                      <strong>{lang === 'ko' ? '태풍 정보 요약:' : lang === 'vi' ? 'Thông tin tóm tắt:' : 'Typhoon Summary:'}</strong>
+                      <p style={{ margin: '4px 0 0', fontSize: '10.5px', lineHeight: '1.4', color: 'rgba(244,248,255,0.85)' }}>
+                        {historicalTyphoons.find(t => t.id === selectedTyphoonId)?.details[lang]}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTyphoonId('live')
+                        setIsTimelinePlaying(false)
+                      }}
+                      style={{
+                        width: '100%',
+                        background: '#ff1744',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '6px 10px',
+                        borderRadius: '3px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        marginTop: '4px',
+                        textAlign: 'center',
+                        transition: 'background 0.2s',
+                        boxShadow: '0 4px 10px rgba(255,23,68,0.2)'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#d50000')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '#ff1744')}
+                    >
+                      ◀ {lang === 'ko' ? '실시간 감시 모드로 복귀' : lang === 'vi' ? 'Trở về giám sát trực tiếp' : 'Return to Live Monitoring'}
+                    </button>
+                  </>
+                )}
               </div>
             </aside>
           ) : (

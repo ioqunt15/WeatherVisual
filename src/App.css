@@ -314,6 +314,9 @@
   font-size: 14px;
   font-weight: 900;
   color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .danger-badge {
@@ -352,6 +355,9 @@
   color: #ffffff;
   font-weight: 900;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .typhoon-warning-box {
@@ -382,6 +388,11 @@
   color: rgba(229, 241, 255, 0.9);
   font-size: 13px;
   font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
 }
 
 .rank-row {
@@ -402,12 +413,16 @@
   min-width: 0;
   color: #ffffff;
   font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rank-row strong {
   color: var(--accent-color);
   font-size: 20px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .rank-row small {
@@ -1576,4 +1591,15 @@
 }
 .lang-ko .rank-panel {
   width: 216px;
+}
+
+/* 3. Windy-style wind particle canvas overlay */
+.wind-particle-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }

@@ -258,18 +258,6 @@ const typhoonValues: Record<string, number> = {
   dalat: 6.5, phanthiet: 14.2, hochiminh: 5.2, vungtau: 12.5, tayninh: 3.0, dongnai: 4.8, cantho: 5.0, phuquoc: 6.8, camau: 8.5, hoangsa: 65.5, truongsa: 18.2
 }
 
-const sstValues: Record<string, number> = {
-  hanoi: 0, haiphong: 27.5, quangninh: 27.2, langson: 0, laocai: 0, dienbien: 0, sonla: 0, hoabinh: 0, thainguyen: 0, vinhphuc: 0,
-  hanam: 0, namdinh: 27.8, ninhbinh: 27.6, thanhhoa: 28.0, nghean: 28.2, hue: 28.8, danang: 29.2, quangnam: 29.3, quynhon: 29.5, nhatrang: 29.8,
-  dalat: 0, phanthiet: 30.0, hochiminh: 0, vungtau: 30.2, tayninh: 0, dongnai: 0, cantho: 0, phuquoc: 30.4, camau: 30.1, hoangsa: 29.5, truongsa: 30.2
-}
-
-const waveValues: Record<string, number> = {
-  hanoi: 0, haiphong: 1.2, quangninh: 1.0, langson: 0, laocai: 0, dienbien: 0, sonla: 0, hoabinh: 0, thainguyen: 0, vinhphuc: 0,
-  hanam: 0, namdinh: 1.3, ninhbinh: 1.1, thanhhoa: 1.5, nghean: 1.6, hue: 2.2, danang: 2.8, quangnam: 2.6, quynhon: 2.4, nhatrang: 2.2,
-  dalat: 0, phanthiet: 2.5, hochiminh: 0, vungtau: 2.3, tayninh: 0, dongnai: 0, cantho: 0, phuquoc: 1.5, camau: 2.8, hoangsa: 4.2, truongsa: 3.8
-}
-
 function buildPoints(values: Record<string, number>, isWindOrTyphoon = false): DisasterPoint[] {
   return standardStations.map((station) => {
     // Generate standard direction (pointing westward / southwestward usually in monsoon seasons 220-270, or typhoon counter-clockwise)
@@ -819,57 +807,5 @@ export const scenarios: DisasterScenario[] = [
       [75, '#7b1fa2'],
     ]),
     points: buildPoints(typhoonValues, true),
-  },
-  {
-    id: 'sst',
-    title: '해수면 온도',
-    headline: '베트남 연안 해수면 온도 (SST)',
-    subtitle: '해양 생태계 변화 및 태풍 열에너지 모니터링',
-    unit: '℃',
-    metric: '수온',
-    updatedAt: '2026.06.04 14:00',
-    source: 'VHWIS 해양수산',
-    maxValue: 35,
-    minValue: 20,
-    gridCellSizeMeters: 5400,
-    bearing: 0,
-    pitch: 0,
-    zoom: 4.8,
-    center: [109.5, 15.0],
-    palette: createPaletteSteps([
-      [20, '#0d47a1'],
-      [24, '#1976d2'],
-      [27, '#fff59d'],
-      [30, '#ffb74d'],
-      [32, '#f4511e'],
-      [35, '#b71c1c'],
-    ]),
-    points: buildPoints(sstValues),
-  },
-  {
-    id: 'wave',
-    title: '유의 파고',
-    headline: '유의 파고 및 파랑 상태 분석',
-    subtitle: '연안 어업 활동 및 해상 도서(황사/쯔엉사) 운항 안전 정보',
-    unit: 'm',
-    metric: '파고',
-    updatedAt: '2026.06.04 14:00',
-    source: 'VHWIS 해양예보',
-    maxValue: 8,
-    minValue: 0,
-    gridCellSizeMeters: 5300,
-    bearing: 0,
-    pitch: 0,
-    zoom: 4.8,
-    center: [109.5, 15.0],
-    palette: createPaletteSteps([
-      [0, '#e0f2f1'],
-      [1, '#4db6ac'],
-      [2, '#00897b'],
-      [4, '#0288d1'],
-      [6, '#7b1fa2'],
-      [8, '#c2185b'],
-    ]),
-    points: buildPoints(waveValues),
   },
 ]
