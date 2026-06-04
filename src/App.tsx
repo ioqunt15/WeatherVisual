@@ -29,6 +29,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Gauge,
+  Cloud,
+  Waves,
 } from 'lucide-react'
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -641,18 +644,28 @@ function estimateTextWidth(value: string, size: number) {
   }, 0)
 }
 
+
 function createCalloutIcon(point: DisasterPoint, lang: Language) {
   const value = formatPointValue(point.value)
   const displayName = point.names?.[lang] || point.name
-  // 베트남어는 성조 포함 장문이라 더 작은 폰트로 추정
   const nameFontSize = lang === 'vi' ? 9.5 : 10.5
   const nameWidth = estimateTextWidth(displayName, nameFontSize)
   const valueWidth = estimateTextWidth(value, 13)
-  // 베트남어 기준 최대 너비를 160으로 제한 (기존 220)
   const maxWidth = lang === 'vi' ? 160 : 200
-  const iconWidth = Math.ceil(Math.max(80, Math.min(maxWidth, nameWidth + valueWidth + 28)))
+
+  const hasArrow = point.direction !== undefined
+  const arrowWidth = hasArrow ? 16 : 0
+  const iconWidth = Math.ceil(Math.max(80, Math.min(maxWidth, nameWidth + valueWidth + 28 + arrowWidth)))
   const iconHeight = 30
   const cardHeight = 19
+
+  const arrowSvg = hasArrow ? `
+  <g transform="translate(${iconWidth - 20}, 5.5) rotate(${point.direction}, 6, 6)">
+    <circle cx="6" cy="6" r="5.5" fill="#f8fbff" stroke="#111820" stroke-width="0.8" />
+    <path d="M6 2 L8.5 9 L6 7.5 L3.5 9 Z" fill="#1a75ff" stroke="#111820" stroke-width="0.5" stroke-linejoin="round"/>
+  </g>
+  ` : ''
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${iconWidth}" height="${iconHeight}" viewBox="0 0 ${iconWidth} ${iconHeight}">
   <defs>
     <filter id="shadow" x="-20%" y="-30%" width="140%" height="170%">
@@ -664,11 +677,14 @@ function createCalloutIcon(point: DisasterPoint, lang: Language) {
   <path d="M${iconWidth / 2} ${cardHeight + 1} L${iconWidth / 2} 25" stroke="#111820" stroke-width="1.2" stroke-linecap="round"/>
   <circle cx="${iconWidth / 2}" cy="26" r="2.5" fill="#f8fbff" stroke="#111820" stroke-width="1.5"/>
   <text x="10" y="15.5" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="${nameFontSize}" font-weight="700" fill="#1f2933">${escapeSvgText(displayName)}</text>
-  <text x="${iconWidth - 7}" y="16" text-anchor="end" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="13" font-weight="900" fill="#111820">${escapeSvgText(value)}</text>
+  <text x="${iconWidth - 7 - arrowWidth}" y="16" text-anchor="end" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="13" font-weight="900" fill="#111820">${escapeSvgText(value)}</text>
+  ${arrowSvg}
 </svg>`
 
+  const iconId = hasArrow ? `${point.id}-${point.value}-${point.direction}` : `${point.id}-${point.value}`
+
   return {
-    iconId: `${point.id}-${point.value}`,
+    iconId,
     iconUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
     iconWidth,
     iconHeight,
@@ -771,18 +787,30 @@ const translations: Record<Language, Record<string, string>> = {
     observation: 'Thông tin quan trắc',
     forecast: 'Thông tin dự báo',
     danger: 'Chỉ số nguy cơ',
+    marine: 'Hải dương & Giám sát',
     // Scenarios
     temperature: 'Nhiệt độ',
     humidity: 'Độ ẩm',
     wind: 'Tốc độ gió',
+    gust: 'Gió giật',
+    pressure: 'Áp suất',
     rain: 'Lượng mưa',
-    forecast_temp: 'Nhiệt độ dự báo',
-    forecast_rain: 'Lượng mưa dự báo',
+    solar: 'Bức xạ mặt trời',
+    forecast_temp: 'Dự báo nhiệt độ',
+    forecast_rain: 'Dự báo lượng mưa',
+    forecast_wind: 'Dự báo gió',
+    forecast_humidity: 'Dự báo độ ẩm',
+    cloud: 'Độ che phủ mây',
     heat: 'Nhiệt độ cảm nhận',
     wildfire: 'Nguy cơ cháy rừng',
     uv: 'Chỉ số UV',
     aqi: 'Chất lượng không khí',
-    future_danger: 'Sắp ra mắt chỉ số mới',
+    landslide: 'Nguy cơ sạt lở',
+    flood: 'Ngập lụt đô thị',
+    drought: 'Hạn hán & Độ ẩm đất',
+    typhoon: 'Theo dõi bão',
+    sst: 'Nhiệt độ biển (SST)',
+    wave: 'Chiều cao sóng',
     // UI labels
     refresh: 'Làm mới dữ liệu',
     trend: 'Xu hướng',
@@ -847,46 +875,83 @@ const translations: Record<Language, Record<string, string>> = {
     southeast: 'Đông Nam Bộ',
     mekong: 'Đồng bằng sông Cửu Long',
     // Headlines and Subtitles
+    temperature_headline: 'Bản đồ nhiệt độ thực tế',
+    temperature_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
     humidity_headline: 'Bản đồ độ ẩm thời gian thực',
     humidity_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
     wind_headline: 'Bản đồ tốc độ gió thời gian thực',
     wind_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS (m/s)',
-    uv_headline: 'Chỉ số tia cực tím UV thời gian thực',
-    uv_subtitle: 'Cường độ bức xạ tia cực tím mặt trời',
-    aqi_headline: 'Bản đồ chất lượng không khí thực tế (AQI)',
-    aqi_subtitle: 'Chỉ số chất lượng không khí tổng hợp theo tiêu chuẩn US EPA',
-    temperature_headline: 'Bản đồ nhiệt độ thực tế',
-    temperature_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
+    gust_headline: 'Bản đồ gió giật thời gian thực',
+    gust_subtitle: 'Đo lường gió giật tức thời và lốc xoáy vùng ven biển',
+    pressure_headline: 'Bản đồ áp suất khí quyển',
+    pressure_subtitle: 'Giám sát áp suất không khí và các vùng áp thấp',
     rain_headline: 'Thông tin lượng mưa thực tế',
     rain_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
-    heat_headline: 'Chỉ số nhiệt độ cảm nhận',
-    heat_subtitle: 'Áp lực nhiệt tính đến yếu tố độ ẩm và gió',
-    wildfire_headline: 'Nguy cơ cháy rừng thời gian thực',
-    wildfire_subtitle: 'Chỉ số dựa trên nhiệt độ, độ ẩm và tốc độ gió',
+    solar_headline: 'Bản đồ bức xạ mặt trời',
+    solar_subtitle: 'Đo lường năng lượng ánh sáng mặt trời theo W/m²',
     forecast_temp_headline: 'Dự báo phân bố nhiệt độ ngày mai',
     forecast_temp_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
     forecast_rain_headline: 'Dự báo phân bố lượng mưa ngày mai',
     forecast_rain_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS (24h)',
-    future_danger_headline: 'Phân tích các chỉ số nguy cơ thiên tai khác',
-    future_danger_subtitle: 'Mô hình phân tích sạt lở đất và các chỉ số nguy cơ bổ sung',
+    forecast_wind_headline: 'Dự báo tốc độ gió ngày mai',
+    forecast_wind_subtitle: 'Dự báo gió bề mặt và hướng gió di chuyển',
+    forecast_humidity_headline: 'Dự báo phân bố độ ẩm ngày mai',
+    forecast_humidity_subtitle: 'Phân tích dự báo độ ẩm tương đối của khí quyển',
+    cloud_headline: 'Dự báo độ che phủ mây',
+    cloud_subtitle: 'Mô hình phân tích tỷ lệ che phủ mây trên bầu trời',
+    heat_headline: 'Chỉ số nhiệt độ cảm nhận',
+    heat_subtitle: 'Áp lực nhiệt tính đến yếu tố độ ẩm và gió',
+    wildfire_headline: 'Nguy cơ cháy rừng thời gian thực',
+    wildfire_subtitle: 'Chỉ số dựa trên nhiệt độ, độ ẩm và tốc độ gió',
+    uv_headline: 'Chỉ số tia cực tím UV thời gian thực',
+    uv_subtitle: 'Cường độ bức xạ tia cực tím mặt trời',
+    aqi_headline: 'Bản đồ chất lượng không khí thực tế (AQI)',
+    aqi_subtitle: 'Chỉ số chất lượng không khí tổng hợp theo tiêu chuẩn US EPA',
+    landslide_headline: 'Nguy cơ sạt lở đất sườn dốc',
+    landslide_subtitle: 'Phân tích sạt lở tại các vùng núi phía Bắc và Tây Nguyên',
+    flood_headline: 'Bản đồ nguy cơ ngập lụt đô thị',
+    flood_subtitle: 'Phân tích rủi ro ngập úng tại các đô thị lớn hạ lưu sông',
+    drought_headline: 'Hạn hán & Độ ẩm đất',
+    drought_subtitle: 'Giám sát độ khô hạn của đất trồng trọt và nguy cơ xâm nhập mặn vùng đồng bằng sông Cửu Long',
+    typhoon_headline: 'Theo dõi bão thời gian thực',
+    typhoon_subtitle: 'Đường đi bão thực tế, vùng nguy hiểm và vùng dự báo sai số',
+    sst_headline: 'Nhiệt độ mặt nước biển (SST)',
+    sst_subtitle: 'Giám sát năng lượng nhiệt đại dương quanh thềm lục địa Việt Nam',
+    wave_headline: 'Bản đồ chiều cao sóng biển',
+    wave_subtitle: 'Theo dõi sóng biển có ý nghĩa phục vụ đánh bắt và cứu hộ',
     hoangsa: 'Quần đảo Hoàng Sa',
     truongsa: 'Quần đảo Trường Sa',
   },
   en: {
-    observation: 'Observation Info',
-    forecast: 'Forecast Info',
-    danger: 'Danger Index',
+    // Categories
+    observation: 'Observations',
+    forecast: 'AI Forecasts',
+    danger: 'Risk Indices',
+    marine: 'Marine & Specialty',
+    // Scenarios
     temperature: 'Temperature',
     humidity: 'Humidity',
     wind: 'Wind Speed',
+    gust: 'Wind Gust',
+    pressure: 'Pressure',
     rain: 'Rainfall',
+    solar: 'Solar Radiation',
     forecast_temp: 'Forecast Temp',
     forecast_rain: 'Forecast Rain',
+    forecast_wind: 'Forecast Wind',
+    forecast_humidity: 'Forecast Humidity',
+    cloud: 'Cloud Cover',
     heat: 'Feels Like Temp',
     wildfire: 'Wildfire Risk',
     uv: 'UV Index',
     aqi: 'Air Quality (AQI)',
-    future_danger: 'Future Danger Index',
+    landslide: 'Landslide Risk',
+    flood: 'Urban Flood Risk',
+    drought: 'Drought Index',
+    typhoon: 'Typhoon Tracker',
+    sst: 'Sea Temp (SST)',
+    wave: 'Wave Height',
+    // UI labels
     refresh: 'Refresh weather data',
     trend: 'Trend',
     cells: 'cells',
@@ -918,25 +983,25 @@ const translations: Record<Language, Record<string, string>> = {
     settings: 'Settings',
     // UI Settings
     settings_title: 'Display Settings',
-    settings_reset: 'Show All',
+    settings_reset: 'Reset All',
     settings_close: 'Close',
     // UI Options
-    opt_title: 'Top-left Title',
-    opt_status: 'Top-right Status Banner',
-    opt_rank: 'Right Rank Board',
-    opt_legend: 'Bottom-left Legend',
-    opt_timeline: 'Timebar/Period Input',
-    opt_controls: 'Bottom Menu',
-    opt_callouts: 'Location Cards',
-    opt_provinceLabels: 'Province Labels Layer',
-    opt_cameraPanel: 'Camera Panel',
-    opt_panelToggle: 'Operation Panel Button',
+    opt_title: 'Top Left Title',
+    opt_status: 'Top Right Status Banner',
+    opt_rank: 'Right Sidebar Ranking',
+    opt_legend: 'Bottom Left Legend',
+    opt_timeline: 'Bottom Play Timeline/Range',
+    opt_controls: 'Bottom Control Panel',
+    opt_callouts: 'Map Location Banners',
+    opt_provinceLabels: 'Province Label Overlay',
+    opt_cameraPanel: 'Camera Auto-Orbit Panel',
+    opt_panelToggle: 'Dashboard Control Buttons',
     // Live strip
     live_template: 'LIVE TEMPLATE',
     status_loading: 'Loading weather...',
     status_ai_forecast: 'AI Simulation Forecast',
-    status_rain_range: 'Precipitation Range Display',
-    status_cache_hit: 'Data retained ({0} stations)',
+    status_rain_range: 'Accumulated Rainfall Range',
+    status_cache_hit: 'Data cached ({0} stations)',
     status_cache_update: 'Data updated ({0} stations)',
     status_api_fail: 'API failed, showing simulation',
     status_checking: 'Checking data...',
@@ -949,46 +1014,84 @@ const translations: Record<Language, Record<string, string>> = {
     south_central: 'South Central & Highlands',
     southeast: 'Southeast',
     mekong: 'Mekong Delta',
+    // Headlines and Subtitles
+    temperature_headline: 'Realtime Temperature Distribution',
+    temperature_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
     humidity_headline: 'Realtime Humidity Distribution',
     humidity_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
     wind_headline: 'Realtime Wind Speed Distribution',
     wind_subtitle: 'CF-VHWIS High-Resolution Weather Data Production (m/s)',
-    uv_headline: 'Realtime UV Index Distribution',
-    uv_subtitle: 'Solar ultraviolet radiation intensity',
-    aqi_headline: 'Realtime Air Quality Index (AQI)',
-    aqi_subtitle: 'US EPA comprehensive air quality index based on PM2.5',
-    temperature_headline: 'Realtime Temperature Distribution',
-    temperature_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
+    gust_headline: 'Realtime Wind Gust Distribution',
+    gust_subtitle: 'Monitoring sudden maximum gust and gale risk',
+    pressure_headline: 'Realtime Surface Pressure Map',
+    pressure_subtitle: 'Monitoring atmospheric pressure systems in East Sea & Mainland',
     rain_headline: 'Realtime Precipitation Distribution',
     rain_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
-    heat_headline: 'Feels Like Temperature Index',
-    heat_subtitle: 'Thermal stress taking into account humidity and wind',
-    wildfire_headline: 'Realtime Wildfire Spread Danger',
-    wildfire_subtitle: 'Realtime index based on temperature, humidity and wind',
+    solar_headline: 'Realtime Solar Radiation Intensity',
+    solar_subtitle: 'Monitoring solar energy production potential (W/m²)',
     forecast_temp_headline: 'Tomorrow Temperature Forecast',
     forecast_temp_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
     forecast_rain_headline: 'Tomorrow Rainfall Forecast',
     forecast_rain_subtitle: 'CF-VHWIS High-Resolution Weather Data Production (24h)',
-    future_danger_headline: 'Disaster Risk Analysis Index',
-    future_danger_subtitle: 'Landslide analysis and additional danger indices model',
+    forecast_wind_headline: 'Tomorrow Wind Forecast',
+    forecast_wind_subtitle: 'Forecasted surface wind speed and vector fields',
+    forecast_humidity_headline: 'Tomorrow Humidity Forecast',
+    forecast_humidity_subtitle: 'Forecasted relative humidity fields',
+    cloud_headline: 'Forecasted Cloud Cover Distribution',
+    cloud_subtitle: 'Forecast of low, middle, and high cloud coverage',
+    heat_headline: 'Feels Like Temperature Index',
+    heat_subtitle: 'Thermal stress taking into account humidity and wind',
+    wildfire_headline: 'Realtime Wildfire Spread Danger',
+    wildfire_subtitle: 'Realtime index based on temperature, humidity and wind',
+    uv_headline: 'Realtime UV Index Distribution',
+    uv_subtitle: 'Solar ultraviolet radiation intensity',
+    aqi_headline: 'Realtime Air Quality Index (AQI)',
+    aqi_subtitle: 'US EPA comprehensive air quality index based on PM2.5',
+    landslide_headline: 'Mountain Landslide Danger Index',
+    landslide_subtitle: 'Slope failure risk model based on cumulative rainfall and topography',
+    flood_headline: 'Urban Inundation & Flood Risk',
+    flood_subtitle: 'Tidal levels and cumulative rain correlation model',
+    drought_headline: 'Drought and Soil Moisture Monitor',
+    drought_subtitle: 'Soil water depletion index and salinity intrusion risk in Mekong',
+    typhoon_headline: 'Live Typhoon Tracking Center',
+    typhoon_subtitle: 'Forecast cone of uncertainty, storm path and radial wind fields',
+    sst_headline: 'Sea Surface Temperature (SST)',
+    sst_subtitle: 'Monitoring ocean heat content off Vietnam coastline',
+    wave_headline: 'Significant Wave Height Map',
+    wave_subtitle: 'Significant wave heights for maritime shipping and fishing safety',
     hoangsa: 'Hoang Sa Archipelago',
     truongsa: 'Truong Sa Archipelago',
   },
   ko: {
-    observation: '기상관측정보',
-    forecast: '기상예측정보',
-    danger: '위험지수정보',
+    // Categories
+    observation: '기상관측 정보',
+    forecast: '기상예보 정보',
+    danger: '생활 및 재난 위험 지수',
+    marine: '해양 및 재난 감시',
+    // Scenarios
     temperature: '기온',
-    humidity: '습도',
-    wind: '풍속',
-    rain: '누적강수량',
-    forecast_temp: '예측 기온',
-    forecast_rain: '예측 강수량',
+    humidity: '상대습도',
+    wind: '풍속/풍향',
+    gust: '돌풍',
+    pressure: '기압',
+    rain: '강수현황',
+    solar: '일사량',
+    forecast_temp: '기온 예보',
+    forecast_rain: '강수 예보',
+    forecast_wind: '풍속/풍향 예보',
+    forecast_humidity: '습도 예보',
+    cloud: '구름량',
     heat: '체감온도',
-    wildfire: '산불 확산 위험',
-    uv: '자외선 지수',
+    wildfire: '산불 위험도',
+    uv: 'UV 지수',
     aqi: '대기질 지수',
-    future_danger: '위험지수 추가 예정',
+    landslide: '산사태 위험',
+    flood: '도심 침수',
+    drought: '가뭄/토양수분',
+    typhoon: '태풍 트래킹',
+    sst: '해수면 온도',
+    wave: '유의 파고',
+    // UI labels
     refresh: '날씨 데이터 새로고침',
     trend: '추이',
     cells: '개 격자',
@@ -1051,34 +1154,117 @@ const translations: Record<Language, Record<string, string>> = {
     south_central: '남중부 & 고원',
     southeast: '동남부',
     mekong: '메콩 삼각주',
-    humidity_headline: '실시간 상대습도 분포',
-    humidity_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
-    wind_headline: '실시간 풍속 분포',
-    wind_subtitle: 'CF-VHWIS 고해상도 기상정보 생산 (m/s)',
-    uv_headline: '실시간 자외선 지수',
-    uv_subtitle: '일사 및 태양 자외선 노출 강도',
-    aqi_headline: '실시간 대기질 분포 (AQI)',
-    aqi_subtitle: 'US EPA 기준 미세먼지 종합 대기질 지수',
+    // Headlines and Subtitles
     temperature_headline: '실시간 기온 분포',
     temperature_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
+    humidity_headline: '실시간 상대습도 분포',
+    humidity_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
+    wind_headline: '실시간 풍속 분포 및 바람장 벡터',
+    wind_subtitle: 'CF-VHWIS 고해상도 풍속/풍향 관측 정보 (m/s)',
+    gust_headline: '실시간 돌풍(Wind Gust) 분포',
+    gust_subtitle: '연안 및 강풍 취약 구역의 순간 최대 풍속 감시',
+    pressure_headline: '실시간 기압 분포',
+    pressure_subtitle: '동해 해역 고저기압 배치 및 대기 순환 모니터링',
     rain_headline: '실시간 강수량 정보',
     rain_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
-    heat_headline: '체감 온도 지수',
-    heat_subtitle: '습도와 바람을 고려한 열 스트레스',
-    wildfire_headline: '산불 발생 위험도',
-    wildfire_subtitle: '온도, 습도, 풍속 기반 실시간 지수',
+    solar_headline: '실시간 태양 일사량 분포',
+    solar_subtitle: '지역별 일조량 및 태양광 에너지 생산성 모니터링 (W/m²)',
     forecast_temp_headline: '내일 기온 예측 분포',
     forecast_temp_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
     forecast_rain_headline: '내일 강수량 예측 분포',
     forecast_rain_subtitle: 'CF-VHWIS 고해상도 기상정보 생산 (24h)',
-    future_danger_headline: '기타 재난 위험지수 분석',
-    future_danger_subtitle: '산사태 및 추가 위험지수 분석 모델',
+    forecast_wind_headline: '내일 예측 바람장 및 풍속 분포',
+    forecast_wind_subtitle: '단기 대기 수치 예측 모델 기반 바람 분석',
+    forecast_humidity_headline: '내일 상대습도 예측 분포',
+    forecast_humidity_subtitle: '대기 수치 예보 모델 단기 습도 시뮬레이션',
+    cloud_headline: '예측 총 구름량 분포',
+    cloud_subtitle: '전운량 시뮬레이션을 통한 가시성 및 기상 상태 예찰',
+    heat_headline: '체감 온도 지수',
+    heat_subtitle: '습도와 바람을 고려한 열 스트레스',
+    wildfire_headline: '산불 발생 위험도',
+    wildfire_subtitle: '온도, 습도, 풍속 기반 실시간 지수',
+    uv_headline: '실시간 자외선 지수',
+    uv_subtitle: '일사 및 태양 자외선 노출 강도',
+    aqi_headline: '실시간 대기질 분포 (AQI)',
+    aqi_subtitle: 'US EPA 기준 미세먼지 종합 대기질 지수',
+    landslide_headline: '산사태 취약 및 경사면 위험지수',
+    landslide_subtitle: '누적 강우 강도와 해발고도 분석을 연계한 산사태 모니터링',
+    flood_headline: '도심 침수 및 하천 범람 위험도',
+    flood_subtitle: '우기철 배수 불량 및 해수면 만조 연계 도시 범람 위험도 분석',
+    drought_headline: '가뭄 및 메콩 삼각주 토양 수분 지수',
+    drought_subtitle: '농경지 가뭄 모니터링 및 메콩 강 하구 해수(염수) 침입 감시',
+    typhoon_headline: '실시간 태풍 이동 경로 및 반경',
+    typhoon_subtitle: '동해상 발생 태풍의 현 위치, 강도, 예측 경로선 및 예보원 표출',
+    sst_headline: '해수면 온도 (SST) 분포도',
+    sst_subtitle: '해안 해류 순환 및 태풍 열량 공급원 해양 온도 모니터링',
+    wave_headline: '유의 파고 및 해상 파랑 분석',
+    wave_subtitle: '연안 선박 활동 및 도서 지역(황사/쯔엉사) 운항 안전 감시',
     hoangsa: '황사 군도',
     truongsa: '쯔엉사 군도',
   }
 }
 
 
+function getTyphoonPathData(epochHour: number) {
+  const centerForEpoch = (ep: number) => {
+    const cycle = ep % 48
+    const lon = 116.0 - cycle * 0.28
+    const lat = 15.0 + Math.sin(cycle * 0.1) * 2.0
+    return [lon, lat]
+  }
+
+  const currentCenter = centerForEpoch(epochHour)
+
+  const history: [number, number][] = []
+  for (let i = -12; i <= 0; i++) {
+    history.push(centerForEpoch(epochHour + i) as [number, number])
+  }
+
+  const forecast: [number, number][] = []
+  const cones: { center: [number, number]; radiusKm: number }[] = []
+  for (let i = 1; i <= 6; i++) {
+    const pt = centerForEpoch(epochHour + i) as [number, number]
+    forecast.push(pt)
+    cones.push({
+      center: pt,
+      radiusKm: i * 40,
+    })
+  }
+
+  return {
+    currentCenter,
+    history,
+    forecast,
+    cones,
+  }
+}
+
+function createGeoJsonCircle(center: [number, number], radiusKm: number, points = 32) {
+  const [lon, lat] = center
+  const coordinates: [number, number][] = []
+  const kmPerDegreeLat = 111.32
+  const kmPerDegreeLon = 111.32 * Math.cos((lat * Math.PI) / 180)
+
+  for (let i = 0; i <= points; i++) {
+    const angle = (i * 2 * Math.PI) / points
+    const dx = Math.cos(angle) * radiusKm
+    const dy = Math.sin(angle) * radiusKm
+    const pointLon = lon + dx / kmPerDegreeLon
+    const pointLat = lat + dy / kmPerDegreeLat
+    coordinates.push([pointLon, pointLat])
+  }
+
+  return {
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [coordinates],
+    },
+    properties: {
+      radius: radiusKm,
+    },
+  }
+}
 
 function App() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -1450,6 +1636,74 @@ function App() {
       setRefreshNonce((n) => n + 1)
     }
   }, [mapLayersInitialized])
+
+  const typhoonGeoJson = useMemo(() => {
+    if (scenarioId !== 'typhoon' || regionLayer !== 'stations') {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      }
+    }
+
+    const dateStr = activeFrame?.updatedAt || activeScenario.updatedAt
+    const date = new Date(dateStr.replace(/\./g, '-').replace(' ', 'T') + '+07:00')
+    const epochHour = isNaN(date.getTime()) ? 494500 : Math.floor(date.getTime() / 3600000)
+
+    const data = getTyphoonPathData(epochHour)
+
+    const features: any[] = []
+
+    // 1. History Line String (past path)
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: data.history,
+      },
+      properties: {
+        type: 'history-path',
+      },
+    })
+
+    // 2. Forecast Line String (future path)
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [data.currentCenter, ...data.forecast],
+      },
+      properties: {
+        type: 'forecast-path',
+      },
+    })
+
+    // 3. Error cones (forecast circles)
+    for (const cone of data.cones) {
+      features.push({
+        ...createGeoJsonCircle(cone.center, cone.radiusKm),
+        properties: {
+          type: 'error-cone',
+        },
+      })
+    }
+
+    // 4. Typhoon eye circle point
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: data.currentCenter,
+      },
+      properties: {
+        type: 'eye-point',
+      },
+    })
+
+    return {
+      type: 'FeatureCollection',
+      features,
+    }
+  }, [scenarioId, activeFrame, activeScenario, regionLayer])
 
   const calloutPinsGeoJson = useMemo(() => {
     const points = (overlayVisibility.callouts && regionLayer === 'stations') ? calloutPoints : []
@@ -1838,8 +2092,6 @@ function App() {
         console.warn('SVG pre-load failed (non-fatal, continuing):', svgErr)
       }
 
-      if (cancelled) return
-
       try {
         // 1-1. 소스 등록 - 이미 있으면 제거 후 재등록
         const sourcesToAdd = [
@@ -1847,6 +2099,7 @@ function App() {
           { id: 'kma-grid-source', data: gridGeoJson },
           { id: 'callout-pins-source', data: calloutPinsGeoJson },
           { id: 'regional-labels-source', data: regionalLabelsGeoJson },
+          { id: 'typhoon-source', data: typhoonGeoJson },
         ]
         for (const { id, data } of sourcesToAdd) {
           if (map.getSource(id)) {
@@ -1961,12 +2214,104 @@ function App() {
           })
         }
 
+        // 1-7. 태풍 예측 신뢰 구역(오차반경) 채우기 레이어 (fill)
+        if (!map.getLayer('typhoon-cones-fill')) {
+          map.addLayer({
+            id: 'typhoon-cones-fill',
+            type: 'fill',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'error-cone'],
+            layout: {
+              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+            },
+            paint: {
+              'fill-color': '#ff1744',
+              'fill-opacity': 0.12,
+            },
+          })
+        }
+
+        // 1-8. 태풍 예측 신뢰 구역 테두리 레이어 (line)
+        if (!map.getLayer('typhoon-cones-outline')) {
+          map.addLayer({
+            id: 'typhoon-cones-outline',
+            type: 'line',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'error-cone'],
+            layout: {
+              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+            },
+            paint: {
+              'line-color': '#ff1744',
+              'line-width': 1.0,
+              'line-dasharray': [3, 3],
+            },
+          })
+        }
+
+        // 1-9. 태풍 지나온 경로 레이어 (line)
+        if (!map.getLayer('typhoon-history-line')) {
+          map.addLayer({
+            id: 'typhoon-history-line',
+            type: 'line',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'history-path'],
+            layout: {
+              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+            },
+            paint: {
+              'line-color': '#cfd8dc',
+              'line-width': 2.0,
+              'line-dasharray': [2, 2],
+            },
+          })
+        }
+
+        // 1-10. 태풍 예상 경로 레이어 (line)
+        if (!map.getLayer('typhoon-forecast-line')) {
+          map.addLayer({
+            id: 'typhoon-forecast-line',
+            type: 'line',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'forecast-path'],
+            layout: {
+              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+            },
+            paint: {
+              'line-color': '#ff1744',
+              'line-width': 3.0,
+            },
+          })
+        }
+
+        // 1-11. 태풍 중심(눈) 레이어 (circle)
+        if (!map.getLayer('typhoon-eye-circle')) {
+          map.addLayer({
+            id: 'typhoon-eye-circle',
+            type: 'circle',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'eye-point'],
+            layout: {
+              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+            },
+            paint: {
+              'circle-radius': 9,
+              'circle-color': '#ff1744',
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 2.5,
+            },
+          })
+        }
+
         // [CRITICAL FIX] 레이어 등록 직후 최신 GeoJSON 데이터 연속 재주입 (setData 중복 호출이지만 유일한 확실한 방법)
         const gridSourceFinal = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
         if (gridSourceFinal) gridSourceFinal.setData(gridGeoJson as any)
 
         const regionSourceFinal = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
         if (regionSourceFinal) regionSourceFinal.setData(regionalFeaturesGeoJson as any)
+
+        const typhoonSourceFinal = map.getSource('typhoon-source') as maplibregl.GeoJSONSource
+        if (typhoonSourceFinal) typhoonSourceFinal.setData(typhoonGeoJson as any)
 
         map.triggerRepaint()
         setMapLayersInitialized(true)
@@ -2017,6 +2362,25 @@ function App() {
         labelsSource.setData(regionalLabelsGeoJson as any)
       }
 
+      const typhoonSource = map.getSource('typhoon-source') as maplibregl.GeoJSONSource
+      if (typhoonSource) {
+        typhoonSource.setData(typhoonGeoJson as any)
+      }
+
+      const typhoonVisibility = scenarioId === 'typhoon' ? 'visible' : 'none'
+      const typhoonLayers = [
+        'typhoon-cones-fill',
+        'typhoon-cones-outline',
+        'typhoon-history-line',
+        'typhoon-forecast-line',
+        'typhoon-eye-circle'
+      ]
+      for (const layerId of typhoonLayers) {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', typhoonVisibility)
+        }
+      }
+
       map.triggerRepaint()
     }
 
@@ -2050,6 +2414,8 @@ function App() {
     calloutPoints,
     overlayVisibility.callouts,
     regionLayer,
+    typhoonGeoJson,
+    scenarioId,
   ])
 
 
@@ -2515,36 +2881,53 @@ function App() {
     }))
   }
 
+
   const categories = [
     {
       id: 'observation',
       title: '기상관측정보',
-      scenarioIds: ['temperature', 'humidity', 'wind', 'rain'],
+      scenarioIds: ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar'],
     },
     {
       id: 'forecast',
       title: '기상예측정보',
-      scenarioIds: ['forecast_temp', 'forecast_rain'],
+      scenarioIds: ['forecast_temp', 'forecast_rain', 'forecast_wind', 'forecast_humidity', 'cloud'],
     },
     {
       id: 'danger',
       title: '위험지수정보',
-      scenarioIds: ['heat', 'wildfire', 'uv', 'aqi', 'future_danger'],
+      scenarioIds: ['heat', 'wildfire', 'uv', 'aqi', 'landslide', 'flood', 'drought'],
+    },
+    {
+      id: 'marine',
+      title: '해양및재난감시',
+      scenarioIds: ['typhoon', 'sst', 'wave'],
     },
   ]
 
   const scenarioIcon = {
+    temperature: Thermometer,
     humidity: Droplet,
     wind: Wind,
-    uv: SunDim,
-    aqi: Activity,
-    temperature: Thermometer,
+    gust: Wind,
+    pressure: Gauge,
     rain: CloudRain,
-    heat: Sun,
-    wildfire: Flame,
+    solar: Sun,
     forecast_temp: TrendingUp,
     forecast_rain: CloudRain,
-    future_danger: AlertTriangle,
+    forecast_wind: Wind,
+    forecast_humidity: Droplet,
+    cloud: Cloud,
+    heat: Thermometer,
+    wildfire: Flame,
+    uv: SunDim,
+    aqi: Activity,
+    landslide: AlertTriangle,
+    flood: AlertTriangle,
+    drought: Flame,
+    typhoon: RotateCw,
+    sst: Waves,
+    wave: Waves,
   }
 
   const selectScenario = (nextScenarioId: typeof scenarioId) => {
@@ -2616,7 +2999,7 @@ function App() {
                     return (
                       <button
                         type="button"
-                        className={`scenario-btn ${isActive ? 'active' : ''} ${id === 'future_danger' ? 'placeholder-btn' : ''}`}
+                        className={`scenario-btn ${isActive ? 'active' : ''}`}
                         key={id}
                         onClick={() => selectScenario(id as any)}
                       >

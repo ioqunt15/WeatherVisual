@@ -1274,6 +1274,8 @@
   left: 20px;
   top: 185px;
   width: 258px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
   background: rgba(3, 12, 22, 0.72);
   border: 1px solid rgba(178, 218, 255, 0.22);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -1284,6 +1286,20 @@
   gap: 16px;
   border-radius: 2px;
   transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.scenario-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+.scenario-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scenario-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(178, 218, 255, 0.15);
+  border-radius: 2px;
+}
+.scenario-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(178, 218, 255, 0.3);
 }
 
 .category-group {
