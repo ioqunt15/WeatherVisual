@@ -655,6 +655,10 @@
   transition: all 0.25s ease-in-out;
 }
 
+.timebar-panel.collapsed {
+  min-height: 0 !important;
+}
+
 .timebar-panel.collapsed .timebar-chart-header,
 .timebar-panel.collapsed .trend-chart-svg {
   display: none !important;
