@@ -1,0 +1,2945 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Camera,
+  CloudRain,
+  Download,
+  Droplet,
+  Flame,
+  Layers,
+  Map as MapIcon,
+  MapPin,
+  Minus,
+  PanelsTopLeft,
+  Pause,
+  PencilLine,
+  Play,
+  Plus,
+  RotateCw,
+  Satellite,
+  Settings,
+  Square,
+  Sun,
+  SunDim,
+  Thermometer,
+  TrendingUp,
+  Video,
+  Wind,
+  X,
+} from 'lucide-react'
+import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import './App.css'
+import { scenarios, type DisasterPoint, type DisasterScenario } from './data/scenarios'
+import { createMapStyle, mapThemes, type MapThemeId } from './data/mapThemes'
+import { buildVietnamGrid, type GridCell, type VietnamGeoJson } from './utils/vietnamGrid'
+import { rgbaToCss, valueToSteppedColor } from './utils/color'
+import { loadWeatherTimeline, type KmaFrame } from './services/kma'
+
+type RegionLayerId = 'stations' | 'regions'
+
+const DEFAULT_MAX_ELEVATION = 80_000
+const RAIN_MAX_ELEVATION = 120_000
+const RAIN_PRIMARY_ELEVATION_VALUE = 400
+const RAIN_PRIMARY_ELEVATION_HEIGHT = 80_000
+
+type Coordinate = [number, number]
+type PolygonCoordinates = Coordinate[][]
+type MultiPolygonCoordinates = PolygonCoordinates[]
+
+type RegionalFeature = {
+  type: 'Feature'
+  properties: {
+    id: string
+    label: string
+    value: number
+    lon: number
+    lat: number
+  }
+  geometry: {
+    type: 'MultiPolygon'
+    coordinates: MultiPolygonCoordinates
+  }
+}
+
+type CalloutLayout = {
+  nudgeX: number
+  stemHeight: number
+}
+
+type CalloutPoint = DisasterPoint & {
+  z: number
+  offset: [number, number]
+  iconId: string
+  iconUrl: string
+  iconWidth: number
+  iconHeight: number
+}
+
+type ScriptText = {
+  title: string
+  headline: string
+  subtitle: string
+}
+
+type RainRange = {
+  start: string
+  end: string
+}
+
+type CameraShot = {
+  id: string
+  name: string
+  center: [number, number]
+  zoom: number
+  pitch: number
+  bearing: number
+  holdSeconds: number
+  moveSeconds: number
+  thumbnail: string
+}
+
+type RecordingState = 'idle' | 'recording' | 'ready'
+
+type RecordingFormat = {
+  mimeType: string
+  extension: 'mp4' | 'webm'
+}
+
+type OverlayKey =
+  | 'title'
+  | 'status'
+  | 'rank'
+  | 'legend'
+  | 'timeline'
+  | 'controls'
+  | 'callouts'
+  | 'provinceLabels'
+  | 'cameraPanel'
+  | 'panelToggle'
+
+type OverlayVisibility = Record<OverlayKey, boolean>
+
+const overlayOptions: Array<{ key: OverlayKey; label: string }> = [
+  { key: 'title', label: '좌상단 제목' },
+  { key: 'status', label: '우상단 상태 배너' },
+  { key: 'rank', label: '우측 순위표' },
+  { key: 'legend', label: '좌하단 범례' },
+  { key: 'timeline', label: '타임바/기간 입력' },
+  { key: 'controls', label: '하단 메뉴' },
+  { key: 'callouts', label: '지역 배너' },
+  { key: 'provinceLabels', label: '지방명 레이어' },
+  { key: 'cameraPanel', label: '카메라 패널' },
+  { key: 'panelToggle', label: '운영 패널 버튼' },
+]
+
+const defaultOverlayVisibility: OverlayVisibility = {
+  title: true,
+  status: true,
+  rank: true,
+  legend: true,
+  timeline: true,
+  controls: true,
+  callouts: true,
+  provinceLabels: true,
+  cameraPanel: true,
+  panelToggle: true,
+}
+
+function createScriptText(scenario: DisasterScenario): ScriptText {
+  return {
+    title: scenario.title,
+    headline: scenario.headline,
+    subtitle: scenario.subtitle,
+  }
+}
+
+
+
+function toDateTimeLocalValue(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+function createDefaultRainRange(now = new Date()): RainRange {
+  const end = new Date(now)
+  end.setMinutes(0, 0, 0)
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+
+  return {
+    start: toDateTimeLocalValue(start),
+    end: toDateTimeLocalValue(end),
+  }
+}
+
+function getRangeHours(range: RainRange) {
+  const start = new Date(range.start).getTime()
+  const end = new Date(range.end).getTime()
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return 0
+  }
+
+  return Math.round(((end - start) / 3_600_000) * 10) / 10
+}
+
+function formatDateTimeLabel(value: string) {
+  return value.replace('T', ' ')
+}
+
+function createRainRangeFrame(scenario: DisasterScenario, range: RainRange): KmaFrame {
+  const hours = getRangeHours(range) || 24
+  const roundedHours = Number.isInteger(hours) ? hours : Math.round(hours * 10) / 10
+
+  return {
+    id: `${scenario.id}-range-${range.start}-${range.end}`,
+    label: `${roundedHours}시간 누적`,
+    updatedAt: `${formatDateTimeLabel(range.start)} ~ ${formatDateTimeLabel(range.end)}`,
+    source: 'Open-Meteo 누적강수량 통계',
+    points: scenario.points,
+    successfulPoints: scenario.points.length,
+  }
+}
+
+function createCameraThumbnail(view: Pick<CameraShot, 'center' | 'zoom' | 'pitch' | 'bearing'>, index: number) {
+  const label = `VIEW ${String(index + 1).padStart(2, '0')}`
+  const sub = `${view.center[0].toFixed(2)}, ${view.center[1].toFixed(2)} / Z${view.zoom.toFixed(1)}`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="168" height="92" viewBox="0 0 168 92">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17314a"/>
+      <stop offset="0.55" stop-color="#0d2233"/>
+      <stop offset="1" stop-color="#06111e"/>
+    </linearGradient>
+  </defs>
+  <rect width="168" height="92" fill="url(#sky)"/>
+  <path d="M0 68 C32 55 52 74 82 57 C110 43 129 56 168 36 L168 92 L0 92 Z" fill="#244f3b" opacity="0.86"/>
+  <path d="M0 75 C38 63 63 81 96 66 C124 54 141 65 168 50 L168 92 L0 92 Z" fill="#0d4a58" opacity="0.74"/>
+  <rect x="10" y="10" width="58" height="17" fill="#f7fbff" opacity="0.94"/>
+  <text x="16" y="23" font-family="Noto Sans KR, sans-serif" font-size="10" font-weight="900" fill="#111820">${label}</text>
+  <text x="10" y="82" font-family="Noto Sans KR, sans-serif" font-size="9" font-weight="800" fill="#e8f4ff">${sub}</text>
+</svg>`
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function createDefaultCameraShots(): CameraShot[] {
+  const views: Array<Omit<CameraShot, 'id' | 'name' | 'holdSeconds' | 'moveSeconds' | 'thumbnail'>> = [
+    { center: [105.85, 21.03], zoom: 6.2, pitch: 0, bearing: 0 }, // Hanoi (North)
+    { center: [108.20, 16.05], zoom: 6.2, pitch: 0, bearing: 0 }, // Da Nang (Central)
+    { center: [106.63, 10.82], zoom: 6.2, pitch: 0, bearing: 0 }, // Ho Chi Minh City (South)
+  ]
+
+  return views.map((view, index) => ({
+    id: `camera-${index + 1}`,
+    name: `${index + 1}번`,
+    ...view,
+    holdSeconds: 1,
+    moveSeconds: 1,
+    thumbnail: createCameraThumbnail(view, index),
+  }))
+}
+
+function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi'): KmaFrame[] {
+  const now = new Date()
+  const frames: KmaFrame[] = []
+  
+  for (let i = 7; i >= 0; i--) {
+    const time = new Date(now.getTime() - i * 3 * 60 * 60 * 1000)
+    const hour = time.getHours()
+    
+    // Sine wave offset to simulate natural meteorological cycle (peak at 14:00, trough at 05:00)
+    const t = (hour - 5) / 24
+    const cycle = Math.sin(t * 2 * Math.PI - Math.PI / 2)
+    
+    const points = scenario.points.map((point) => {
+      const range = (scenario.maxValue - scenario.minValue) * 0.15 // 15% amplitude
+      let val = point.value + cycle * range
+      
+      // Add slight noise
+      val += (Math.random() - 0.5) * (range * 0.1)
+      
+      val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
+      val = Math.round(val * 10) / 10
+      
+      return {
+        ...point,
+        value: val,
+      }
+    })
+    
+    const label = `${String(hour).padStart(2, '0')}:00`
+    const month = String(time.getMonth() + 1).padStart(2, '0')
+    const day = String(time.getDate()).padStart(2, '0')
+    const dateStr = `${time.getFullYear()}.${month}.${day} ${label}`
+    
+    frames.push({
+      id: `${scenario.id}-mock-${i}`,
+      label,
+      updatedAt: dateStr,
+      source: translations[lang]['simulation'] || 'AI 시뮬레이션 예보',
+      points,
+    })
+  }
+  
+  return frames
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function getPreferredRecordingFormat(): RecordingFormat {
+  const candidates: RecordingFormat[] = [
+    { mimeType: 'video/mp4;codecs=avc1.42E01E', extension: 'mp4' },
+    { mimeType: 'video/mp4;codecs=h264', extension: 'mp4' },
+    { mimeType: 'video/mp4', extension: 'mp4' },
+    { mimeType: 'video/webm;codecs=vp9', extension: 'webm' },
+    { mimeType: 'video/webm;codecs=vp8', extension: 'webm' },
+    { mimeType: 'video/webm', extension: 'webm' },
+  ]
+
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType)) ?? candidates[candidates.length - 1]
+}
+
+function clamp(value: number, min = 0, max = 1) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function getElevationRatio(value: number, scenario: DisasterScenario) {
+  const domainSize = scenario.maxValue - scenario.minValue
+
+  if (domainSize <= 0) {
+    return 0
+  }
+
+  return clamp((value - scenario.minValue) / domainSize)
+}
+
+function getRainElevationValue(value: number, scenario: DisasterScenario) {
+  const clampedValue = clamp(value, scenario.minValue, scenario.maxValue)
+  const primaryDomain = RAIN_PRIMARY_ELEVATION_VALUE - scenario.minValue
+
+  if (clampedValue <= RAIN_PRIMARY_ELEVATION_VALUE) {
+    return primaryDomain <= 0
+      ? 0
+      : ((clampedValue - scenario.minValue) / primaryDomain) * RAIN_PRIMARY_ELEVATION_HEIGHT
+  }
+
+  const highDomain = scenario.maxValue - RAIN_PRIMARY_ELEVATION_VALUE
+
+  if (highDomain <= 0) {
+    return RAIN_PRIMARY_ELEVATION_HEIGHT
+  }
+
+  return (
+    RAIN_PRIMARY_ELEVATION_HEIGHT +
+    ((clampedValue - RAIN_PRIMARY_ELEVATION_VALUE) / highDomain) *
+      (RAIN_MAX_ELEVATION - RAIN_PRIMARY_ELEVATION_HEIGHT)
+  )
+}
+
+function getLinearElevationValue(value: number, scenario: DisasterScenario) {
+  if (scenario.id === 'rain') {
+    return getRainElevationValue(value, scenario)
+  }
+
+  return getElevationRatio(value, scenario) * DEFAULT_MAX_ELEVATION
+}
+
+function getColumnElevationValue(cell: GridCell, scenario: DisasterScenario) {
+  return getLinearElevationValue(cell.value, scenario)
+}
+
+function buildGridGeoJson(cells: GridCell[], cellSizeMeters: number) {
+  const R = cellSizeMeters * 0.38
+  const D_lat = 111120
+
+  const features = cells.map((cell) => {
+    const cosLat = Math.cos((cell.lat * Math.PI) / 180)
+    const dLat = R / D_lat
+    const dLon = R / (D_lat * cosLat)
+
+    return {
+      type: 'Feature',
+      properties: {
+        id: cell.id,
+        value: cell.value,
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [cell.lon - dLon, cell.lat + dLat],
+            [cell.lon + dLon, cell.lat + dLat],
+            [cell.lon + dLon, cell.lat - dLat],
+            [cell.lon - dLon, cell.lat - dLat],
+            [cell.lon - dLon, cell.lat + dLat],
+          ],
+        ],
+      },
+    }
+  })
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  }
+}
+
+const addSvgImageToMap = (map: maplibregl.Map, id: string, svgString: string): Promise<void> => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(svgBlob)
+    img.onload = () => {
+      if (map.hasImage(id)) {
+        map.removeImage(id)
+      }
+      map.addImage(id, img)
+      URL.revokeObjectURL(url)
+      resolve()
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve()
+    }
+    img.src = url
+  })
+}
+
+function getRegionalElevationValue(value: number, scenario: DisasterScenario) {
+  return getLinearElevationValue(value, scenario)
+}
+
+function removeVietnameseTones(str: string) {
+  let result = str.toLowerCase();
+  result = result.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+  result = result.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+  result = result.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+  result = result.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+  result = result.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+  result = result.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+  result = result.replace(/đ/g, "d");
+  return result.replace(/[^a-z0-9]/g, "");
+}
+
+function toMultiPolygonCoordinates(feature: VietnamGeoJson['features'][number]): MultiPolygonCoordinates {
+  if (feature.geometry.type === 'Polygon') {
+    return [feature.geometry.coordinates as PolygonCoordinates]
+  }
+
+  return feature.geometry.coordinates as MultiPolygonCoordinates
+}
+
+function getRegionValue(points: DisasterPoint[], pointIds: string[]) {
+  const regionPoints = points.filter((point) => pointIds.includes(point.id))
+
+  if (regionPoints.length === 0) {
+    return 0
+  }
+
+  return Math.round((regionPoints.reduce((sum, point) => sum + point.value, 0) / regionPoints.length) * 10) / 10
+}
+
+function buildRegionalFeatures(geoJson: VietnamGeoJson | null, scenario: DisasterScenario): RegionalFeature[] {
+  if (!geoJson) {
+    return []
+  }
+
+  return traditionalRegions
+    .map((region) => {
+      const coordinates = geoJson.features
+        .filter((feature) => {
+          const name = feature.properties?.shapeName || feature.properties?.name || feature.properties?.name_eng || feature.properties?.Name || '';
+          const hcKey = feature.properties?.['hc-key'] || '';
+          const cleanedName = removeVietnameseTones(name);
+          const cleanedHcKey = hcKey.replace('vn-', '').toLowerCase();
+          return region.namesEng.includes(cleanedName) || region.namesEng.includes(cleanedHcKey);
+        })
+        .flatMap((feature) => toMultiPolygonCoordinates(feature))
+
+      if (coordinates.length === 0) {
+        return null
+      }
+
+      return {
+        type: 'Feature',
+        properties: {
+          id: region.id,
+          label: region.label,
+          value: getRegionValue(scenario.points, region.pointIds),
+          lon: region.center[0],
+          lat: region.center[1],
+        },
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates,
+        },
+      } satisfies RegionalFeature
+    })
+    .filter(Boolean) as RegionalFeature[]
+}
+
+function escapeSvgText(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function formatPointValue(value: number) {
+  if (Number.isInteger(value)) {
+    return String(value)
+  }
+
+  return String(Math.round(value * 10) / 10)
+}
+
+function createLegendTicks(scenario: DisasterScenario) {
+  const tickCount = 6
+  const range = scenario.maxValue - scenario.minValue
+
+  return Array.from({ length: tickCount }, (_, index) => {
+    const position = index / (tickCount - 1)
+    const value = scenario.minValue + range * position
+    const roundedValue = Math.round(value * 10) / 10
+    const label = `${formatPointValue(roundedValue)}${index === tickCount - 1 ? scenario.unit : ''}`
+
+    return {
+      label,
+      position: position * 100,
+    }
+  })
+}
+
+function translateLiveText(text: string | undefined, lang: Language): string {
+  if (!text) return ''
+  let processed = text.normalize('NFC')
+  
+  // Open-Meteo를 CF-VHWIS로 치환
+  processed = processed.replace(/Open-Meteo/gi, 'CF-VHWIS')
+  
+  // 실황 -> Thực tế (vi), Observed (en)
+  if (processed.includes('실황')) {
+    if (lang === 'vi') {
+      processed = processed.replace(/실황/g, 'Thực tế')
+    } else if (lang === 'en') {
+      processed = processed.replace(/실황/g, 'Observed')
+    }
+  }
+  // 예보 -> Dự báo (vi), Forecast (en)
+  if (processed.includes('예보')) {
+    if (lang === 'vi') {
+      processed = processed.replace(/예보/g, 'Dự báo')
+    } else if (lang === 'en') {
+      processed = processed.replace(/예보/g, 'Forecast')
+    }
+  }
+  return processed
+}
+
+function estimateTextWidth(value: string, size: number) {
+  return [...value].reduce((sum, char) => {
+    const isKoreanOrVietnamese = /[가-힣]/.test(char) || /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]/.test(char)
+    if (isKoreanOrVietnamese) return sum + size * 1.05
+    if (char === ' ') return sum + size * 0.5
+    return sum + size * 0.7
+  }, 0)
+}
+
+function createCalloutIcon(point: DisasterPoint, lang: Language) {
+  const value = formatPointValue(point.value)
+  const displayName = point.names?.[lang] || point.name
+  const nameWidth = estimateTextWidth(displayName, 10.5)
+  const valueWidth = estimateTextWidth(value, 13)
+  const iconWidth = Math.ceil(Math.max(88, Math.min(220, nameWidth + valueWidth + 34)))
+  const iconHeight = 30
+  const cardHeight = 19
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${iconWidth}" height="${iconHeight}" viewBox="0 0 ${iconWidth} ${iconHeight}">
+  <defs>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#000000" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+  <rect x="3" y="2" width="${iconWidth - 6}" height="${cardHeight}" fill="#f7f9fc" fill-opacity="0.97" filter="url(#shadow)"/>
+  <rect x="3" y="2" width="3.5" height="${cardHeight}" fill="#111820"/>
+  <path d="M${iconWidth / 2} ${cardHeight + 1} L${iconWidth / 2} 25" stroke="#111820" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="${iconWidth / 2}" cy="26" r="2.5" fill="#f8fbff" stroke="#111820" stroke-width="1.5"/>
+  <text x="12" y="16" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="10.5" font-weight="900" fill="#1f2933">${escapeSvgText(displayName)}</text>
+  <text x="${iconWidth - 7}" y="16" text-anchor="end" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="13" font-weight="900" fill="#111820">${escapeSvgText(value)}</text>
+</svg>`
+
+  return {
+    iconId: `${point.id}-${point.value}`,
+    iconUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    iconWidth,
+    iconHeight,
+  }
+}
+
+const CALLOUT_LAYOUTS: Record<string, CalloutLayout> = {
+  hanoi: { nudgeX: 6, stemHeight: 38 },
+  haiphong: { nudgeX: 20, stemHeight: 40 },
+  quangninh: { nudgeX: 26, stemHeight: 44 },
+  langson: { nudgeX: -16, stemHeight: 42 },
+  laocai: { nudgeX: -26, stemHeight: 46 },
+  dienbien: { nudgeX: -32, stemHeight: 48 },
+  sonla: { nudgeX: -20, stemHeight: 44 },
+  hoabinh: { nudgeX: -18, stemHeight: 44 },
+  thainguyen: { nudgeX: 12, stemHeight: 42 },
+  vinhphuc: { nudgeX: -12, stemHeight: 40 },
+  hanam: { nudgeX: -16, stemHeight: 44 },
+  namdinh: { nudgeX: 18, stemHeight: 46 },
+  ninhbinh: { nudgeX: -18, stemHeight: 48 },
+  thanhhoa: { nudgeX: -24, stemHeight: 50 },
+  nghean: { nudgeX: -26, stemHeight: 52 },
+  hue: { nudgeX: 24, stemHeight: 44 },
+  danang: { nudgeX: 28, stemHeight: 46 },
+  quangnam: { nudgeX: -20, stemHeight: 48 },
+  quynhon: { nudgeX: 24, stemHeight: 44 },
+  nhatrang: { nudgeX: 26, stemHeight: 42 },
+  dalat: { nudgeX: -28, stemHeight: 46 },
+  phanthiet: { nudgeX: 20, stemHeight: 44 },
+  hochiminh: { nudgeX: 24, stemHeight: 40 },
+  vungtau: { nudgeX: 28, stemHeight: 44 },
+  tayninh: { nudgeX: -28, stemHeight: 46 },
+  dongnai: { nudgeX: 16, stemHeight: 46 },
+  cantho: { nudgeX: -24, stemHeight: 52 },
+  phuquoc: { nudgeX: -32, stemHeight: 54 },
+  camau: { nudgeX: -18, stemHeight: 56 },
+}
+
+const mapThemeIcon = {
+  dark: Layers,
+  admin: MapIcon,
+  satellite: Satellite,
+}
+
+const regionLayers: Array<{ id: RegionLayerId; label: string }> = [
+  { id: 'stations', label: '측정지점' },
+  { id: 'regions', label: '광역지역' },
+]
+
+const traditionalRegions = [
+  {
+    id: 'north_mountain',
+    label: '북부 산악',
+    namesEng: ['hagiang', 'caobang', 'backan', 'tuyenquang', 'laocai', 'dienbien', 'laichau', 'sonla', 'yenbai', 'hoabinh', 'thainguyen', 'langson', 'bacgiang', 'phutho'],
+    pointIds: ['laocai', 'dienbien', 'sonla', 'hoabinh', 'thainguyen', 'langson'],
+    center: [104.5, 21.8] as [number, number],
+  },
+  {
+    id: 'red_river',
+    label: '홍강 삼각주',
+    namesEng: ['hanoi', 'vinhphuc', 'bacninh', 'quangninh', 'haiduong', 'haiphong', 'hungyen', 'thaibinh', 'hanam', 'namdinh', 'ninhbinh'],
+    pointIds: ['hanoi', 'haiphong', 'quangninh', 'vinhphuc', 'hanam', 'namdinh', 'ninhbinh'],
+    center: [106.0, 20.8] as [number, number],
+  },
+  {
+    id: 'north_central',
+    label: '북중부',
+    namesEng: ['thanhhoa', 'nghean', 'hatinh', 'quangbinh', 'quangtri', 'thuathienhue', 'thuathien - hue'],
+    pointIds: ['thanhhoa', 'nghean', 'hue'],
+    center: [106.0, 18.0] as [number, number],
+  },
+  {
+    id: 'south_central',
+    label: '남중부 & 고원',
+    namesEng: ['danang', 'quangnam', 'quangngai', 'binhdinh', 'phuyen', 'khanhhoa', 'ninhthuan', 'binhthuan', 'kontum', 'gialai', 'daklak', 'daknong', 'lamdong'],
+    pointIds: ['danang', 'quangnam', 'quynhon', 'nhatrang', 'dalat', 'phanthiet'],
+    center: [108.5, 13.5] as [number, number],
+  },
+  {
+    id: 'southeast',
+    label: '동남부',
+    namesEng: ['hochiminh', 'binhphuoc', 'tayninh', 'binhduong', 'dongnai', 'bariavungtau'],
+    pointIds: ['hochiminh', 'vungtau', 'tayninh', 'dongnai'],
+    center: [106.8, 11.0] as [number, number],
+  },
+  {
+    id: 'mekong',
+    label: '메콩 삼각주',
+    namesEng: ['cantho', 'longan', 'tiengiang', 'bentre', 'travinh', 'vinhlong', 'dongthap', 'angiang', 'kiengiang', 'haugiang', 'soctrang', 'baclieu', 'camau'],
+    pointIds: ['cantho', 'phuquoc', 'camau'],
+    center: [105.5, 9.8] as [number, number],
+  },
+]
+
+type Language = 'vi' | 'en' | 'ko'
+
+const translations: Record<Language, Record<string, string>> = {
+  vi: {
+    // Categories
+    observation: 'Thông tin quan trắc',
+    forecast: 'Thông tin dự báo',
+    danger: 'Chỉ số nguy cơ',
+    // Scenarios
+    temperature: 'Nhiệt độ',
+    humidity: 'Độ ẩm',
+    wind: 'Tốc độ gió',
+    rain: 'Lượng mưa',
+    forecast_temp: 'Nhiệt độ dự báo',
+    forecast_rain: 'Lượng mưa dự báo',
+    heat: 'Nhiệt độ cảm nhận',
+    wildfire: 'Nguy cơ cháy rừng',
+    uv: 'Chỉ số UV',
+    aqi: 'Chất lượng không khí',
+    future_danger: 'Sắp ra mắt chỉ số mới',
+    // UI labels
+    refresh: 'Làm mới dữ liệu',
+    trend: 'Xu hướng',
+    cells: 'ô dữ liệu',
+    rank: 'Bảng xếp hạng',
+    station: 'Trạm đo',
+    stations: 'Điểm đo',
+    regions: 'Khu vực lớn',
+    view3d: 'Góc nhìn 3D',
+    view2d: 'Góc nhìn 2D',
+    styleSatellite: 'Vệ tinh',
+    styleAdmin: 'Hành chính',
+    styleDark: 'Tối',
+    timelinePlay: 'Phát dòng thời gian',
+    timelinePause: 'Tạm dừng dòng thời gian',
+    rainStart: 'Bắt đầu',
+    rainEnd: 'Kết thúc',
+    rainApply: 'Áp dụng',
+    rainHours: 'giờ tích lũy',
+    forecastModel: 'Dự báo mô hình AI',
+    simulation: 'Dự báo mô phỏng AI',
+    statusChecking: 'Đang kiểm tra...',
+    statusCheckingLive: 'Đang tải thời tiết...',
+    statusUpdated: 'Cập nhật trạm đo',
+    sampleData: 'Dữ liệu mẫu',
+    trendTitle: 'Xu hướng thời gian thực',
+    languageLabel: 'Ngôn ngữ',
+    demo: 'Trình diễn',
+    texts: 'Văn bản',
+    settings: 'Cài đặt',
+    // UI Settings
+    settings_title: 'Thiết lập hiển thị',
+    settings_reset: 'Hiển thị tất cả',
+    settings_close: 'Đóng',
+    // UI Options
+    opt_title: 'Tiêu đề phía trên bên trái',
+    opt_status: 'Băng rôn trạng thái phía trên bên phải',
+    opt_rank: 'Bảng xếp hạng bên phải',
+    opt_legend: 'Chú giải phía dưới bên trái',
+    opt_timeline: 'Thanh thời gian/Nhập khoảng thời gian',
+    opt_controls: 'Menu phía dưới',
+    opt_callouts: 'Băng rôn khu vực',
+    opt_provinceLabels: 'Lớp nhãn địa phương',
+    opt_cameraPanel: 'Bảng điều khiển camera',
+    opt_panelToggle: 'Nút bảng điều khiển vận hành',
+    // Live strip
+    live_template: 'Bản mẫu trực tiếp',
+    status_loading: 'Đang tải thời tiết...',
+    status_ai_forecast: 'Dự báo mô phỏng AI',
+    status_rain_range: 'Hiển thị lượng mưa tích lũy',
+    status_cache_hit: 'Giữ nguyên dữ liệu ({0} điểm)',
+    status_cache_update: 'Cập nhật dữ liệu ({0} điểm)',
+    status_api_fail: 'API thất bại, hiển thị mô phỏng',
+    status_checking: 'Đang kiểm tra...',
+    status_sample: 'Dữ liệu mẫu',
+    status_rain_apply: 'Áp dụng lượng mưa',
+    // Regions
+    north_mountain: 'Miền núi phía Bắc',
+    red_river: 'Đồng bằng sông Hồng',
+    north_central: 'Bắc Trung Bộ',
+    south_central: 'Nam Trung Bộ & Tây Nguyên',
+    southeast: 'Đông Nam Bộ',
+    mekong: 'Đồng bằng sông Cửu Long',
+    // Headlines and Subtitles
+    humidity_headline: 'Bản đồ độ ẩm thời gian thực',
+    humidity_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
+    wind_headline: 'Bản đồ tốc độ gió thời gian thực',
+    wind_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS (m/s)',
+    uv_headline: 'Chỉ số tia cực tím UV thời gian thực',
+    uv_subtitle: 'Cường độ bức xạ tia cực tím mặt trời',
+    aqi_headline: 'Bản đồ chất lượng không khí thực tế (AQI)',
+    aqi_subtitle: 'Chỉ số chất lượng không khí tổng hợp theo tiêu chuẩn US EPA',
+    temperature_headline: 'Bản đồ nhiệt độ thực tế',
+    temperature_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
+    rain_headline: 'Thông tin lượng mưa thực tế',
+    rain_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
+    heat_headline: 'Chỉ số nhiệt độ cảm nhận',
+    heat_subtitle: 'Áp lực nhiệt tính đến yếu tố độ ẩm và gió',
+    wildfire_headline: 'Nguy cơ cháy rừng thời gian thực',
+    wildfire_subtitle: 'Chỉ số dựa trên nhiệt độ, độ ẩm và tốc độ gió',
+    forecast_temp_headline: 'Dự báo phân bố nhiệt độ ngày mai',
+    forecast_temp_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS',
+    forecast_rain_headline: 'Dự báo phân bố lượng mưa ngày mai',
+    forecast_rain_subtitle: 'Sản xuất thông tin thời tiết độ phân giải cao CF-VHWIS (24h)',
+    future_danger_headline: 'Phân tích các chỉ số nguy cơ thiên tai khác',
+    future_danger_subtitle: 'Mô hình phân tích sạt lở đất và các chỉ số nguy cơ bổ sung',
+  },
+  en: {
+    observation: 'Observation Info',
+    forecast: 'Forecast Info',
+    danger: 'Danger Index',
+    temperature: 'Temperature',
+    humidity: 'Humidity',
+    wind: 'Wind Speed',
+    rain: 'Rainfall',
+    forecast_temp: 'Forecast Temp',
+    forecast_rain: 'Forecast Rain',
+    heat: 'Feels Like Temp',
+    wildfire: 'Wildfire Risk',
+    uv: 'UV Index',
+    aqi: 'Air Quality (AQI)',
+    future_danger: 'Future Danger Index',
+    refresh: 'Refresh weather data',
+    trend: 'Trend',
+    cells: 'cells',
+    rank: 'Top Locations',
+    station: 'Station',
+    stations: 'Stations',
+    regions: 'Regions',
+    view3d: '3D View',
+    view2d: '2D View',
+    styleSatellite: 'Satellite',
+    styleAdmin: 'Admin Map',
+    styleDark: 'Dark Map',
+    timelinePlay: 'Play Timeline',
+    timelinePause: 'Pause Timeline',
+    rainStart: 'Start',
+    rainEnd: 'End',
+    rainApply: 'Apply',
+    rainHours: 'hours accumulated',
+    forecastModel: 'AI Forecast Model',
+    simulation: 'AI Simulation Forecast',
+    statusChecking: 'Checking data...',
+    statusCheckingLive: 'Loading weather...',
+    statusUpdated: 'Updated stations',
+    sampleData: 'Sample Data',
+    trendTitle: 'Realtime Trend',
+    languageLabel: 'Language',
+    demo: 'Demo',
+    texts: 'Texts',
+    settings: 'Settings',
+    // UI Settings
+    settings_title: 'Display Settings',
+    settings_reset: 'Show All',
+    settings_close: 'Close',
+    // UI Options
+    opt_title: 'Top-left Title',
+    opt_status: 'Top-right Status Banner',
+    opt_rank: 'Right Rank Board',
+    opt_legend: 'Bottom-left Legend',
+    opt_timeline: 'Timebar/Period Input',
+    opt_controls: 'Bottom Menu',
+    opt_callouts: 'Location Cards',
+    opt_provinceLabels: 'Province Labels Layer',
+    opt_cameraPanel: 'Camera Panel',
+    opt_panelToggle: 'Operation Panel Button',
+    // Live strip
+    live_template: 'LIVE TEMPLATE',
+    status_loading: 'Loading weather...',
+    status_ai_forecast: 'AI Simulation Forecast',
+    status_rain_range: 'Precipitation Range Display',
+    status_cache_hit: 'Data retained ({0} stations)',
+    status_cache_update: 'Data updated ({0} stations)',
+    status_api_fail: 'API failed, showing simulation',
+    status_checking: 'Checking data...',
+    status_sample: 'Sample Data',
+    status_rain_apply: 'Rainfall range applied',
+    // Regions
+    north_mountain: 'Northern Mountains',
+    red_river: 'Red River Delta',
+    north_central: 'North Central',
+    south_central: 'South Central & Highlands',
+    southeast: 'Southeast',
+    mekong: 'Mekong Delta',
+    humidity_headline: 'Realtime Humidity Distribution',
+    humidity_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
+    wind_headline: 'Realtime Wind Speed Distribution',
+    wind_subtitle: 'CF-VHWIS High-Resolution Weather Data Production (m/s)',
+    uv_headline: 'Realtime UV Index Distribution',
+    uv_subtitle: 'Solar ultraviolet radiation intensity',
+    aqi_headline: 'Realtime Air Quality Index (AQI)',
+    aqi_subtitle: 'US EPA comprehensive air quality index based on PM2.5',
+    temperature_headline: 'Realtime Temperature Distribution',
+    temperature_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
+    rain_headline: 'Realtime Precipitation Distribution',
+    rain_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
+    heat_headline: 'Feels Like Temperature Index',
+    heat_subtitle: 'Thermal stress taking into account humidity and wind',
+    wildfire_headline: 'Realtime Wildfire Spread Danger',
+    wildfire_subtitle: 'Realtime index based on temperature, humidity and wind',
+    forecast_temp_headline: 'Tomorrow Temperature Forecast',
+    forecast_temp_subtitle: 'CF-VHWIS High-Resolution Weather Data Production',
+    forecast_rain_headline: 'Tomorrow Rainfall Forecast',
+    forecast_rain_subtitle: 'CF-VHWIS High-Resolution Weather Data Production (24h)',
+    future_danger_headline: 'Disaster Risk Analysis Index',
+    future_danger_subtitle: 'Landslide analysis and additional danger indices model',
+  },
+  ko: {
+    observation: '기상관측정보',
+    forecast: '기상예측정보',
+    danger: '위험지수정보',
+    temperature: '기온',
+    humidity: '습도',
+    wind: '풍속',
+    rain: '누적강수량',
+    forecast_temp: '예측 기온',
+    forecast_rain: '예측 강수량',
+    heat: '체감온도',
+    wildfire: '산불 확산 위험',
+    uv: '자외선 지수',
+    aqi: '대기질 지수',
+    future_danger: '위험지수 추가 예정',
+    refresh: '날씨 데이터 새로고침',
+    trend: '추이',
+    cells: '개 격자',
+    rank: '주요 지점',
+    station: '지점',
+    stations: '측정지점',
+    regions: '광역지역',
+    view3d: '3D 뷰',
+    view2d: '2D 뷰',
+    styleSatellite: '위성',
+    styleAdmin: '행정',
+    styleDark: '다크',
+    timelinePlay: '타임라인 재생',
+    timelinePause: '타임라인 정지',
+    rainStart: '시작',
+    rainEnd: '마감',
+    rainApply: '적용',
+    rainHours: '시간 누적',
+    forecastModel: '기상 AI 예측 모델',
+    simulation: 'AI 시뮬레이션 예보',
+    statusChecking: '최신 데이터 확인 중',
+    statusCheckingLive: '날씨 데이터 불러오는 중',
+    statusUpdated: '데이터 갱신 완료',
+    sampleData: '샘플 데이터',
+    trendTitle: '실시간 추이',
+    languageLabel: '언어',
+    demo: '시연',
+    texts: '문구',
+    settings: '설정',
+    // UI Settings
+    settings_title: '화면 표시 설정',
+    settings_reset: '전체 표시',
+    settings_close: '닫기',
+    // UI Options
+    opt_title: '좌상단 제목',
+    opt_status: '우상단 상태 배너',
+    opt_rank: '우측 순위표',
+    opt_legend: '좌하단 범례',
+    opt_timeline: '타임바/기간 입력',
+    opt_controls: '하단 메뉴',
+    opt_callouts: '지역 배너',
+    opt_provinceLabels: '지방명 레이어',
+    opt_cameraPanel: '카메라 패널',
+    opt_panelToggle: '운영 패널 버튼',
+    // Live strip
+    live_template: '실시간 템플릿',
+    status_loading: '날씨 데이터 불러오는 중',
+    status_ai_forecast: 'AI 시뮬레이션 예보',
+    status_rain_range: '누적강수량 범위 표시',
+    status_cache_hit: '데이터 유지 {0}지점',
+    status_cache_update: '데이터 갱신 {0}지점',
+    status_api_fail: '날씨 API 실패, 모의 추이 표시',
+    status_checking: '최신 데이터 확인 중',
+    status_sample: '샘플 데이터',
+    status_rain_apply: '누적강수량 범위 적용',
+    // Regions
+    north_mountain: '북부 산악',
+    red_river: '홍강 삼각주',
+    north_central: '북중부',
+    south_central: '남중부 & 고원',
+    southeast: '동남부',
+    mekong: '메콩 삼각주',
+    humidity_headline: '실시간 상대습도 분포',
+    humidity_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
+    wind_headline: '실시간 풍속 분포',
+    wind_subtitle: 'CF-VHWIS 고해상도 기상정보 생산 (m/s)',
+    uv_headline: '실시간 자외선 지수',
+    uv_subtitle: '일사 및 태양 자외선 노출 강도',
+    aqi_headline: '실시간 대기질 분포 (AQI)',
+    aqi_subtitle: 'US EPA 기준 미세먼지 종합 대기질 지수',
+    temperature_headline: '실시간 기온 분포',
+    temperature_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
+    rain_headline: '실시간 강수량 정보',
+    rain_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
+    heat_headline: '체감 온도 지수',
+    heat_subtitle: '습도와 바람을 고려한 열 스트레스',
+    wildfire_headline: '산불 발생 위험도',
+    wildfire_subtitle: '온도, 습도, 풍속 기반 실시간 지수',
+    forecast_temp_headline: '내일 기온 예측 분포',
+    forecast_temp_subtitle: 'CF-VHWIS 고해상도 기상정보 생산',
+    forecast_rain_headline: '내일 강수량 예측 분포',
+    forecast_rain_subtitle: 'CF-VHWIS 고해상도 기상정보 생산 (24h)',
+    future_danger_headline: '기타 재난 위험지수 분석',
+    future_danger_subtitle: '산사태 및 추가 위험지수 분석 모델',
+  }
+}
+
+function getDynamicPitch(): number {
+  return 0
+}
+
+function App() {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
+  const requestSeqRef = useRef(0)
+  const cameraRunIdRef = useRef(0)
+  const revealFrameRef = useRef<number | null>(null)
+  const zoomFrameRef = useRef<number | null>(null)
+  const zoomDirectionRef = useRef(0)
+  const isRightMouseDownRef = useRef(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordingStreamRef = useRef<MediaStream | null>(null)
+  const recordingChunksRef = useRef<Blob[]>([])
+  const [scenarioId, setScenarioId] = useState<DisasterScenario['id']>('temperature')
+  const [selectedStationId, setSelectedStationId] = useState<string>('hanoi')
+  const [lang, setLang] = useState<Language>('vi')
+  const [mapTheme, setMapTheme] = useState<MapThemeId>('satellite')
+  const [regionLayer, setRegionLayer] = useState<RegionLayerId>('stations')
+  const [vietnamGeoJson, setVietnamGeoJson] = useState<VietnamGeoJson | null>(null)
+  const [timeline, setTimeline] = useState<KmaFrame[]>(() => {
+    const defaultSec = scenarios.find((s) => s.id === 'temperature') || scenarios[0]
+    return generateMockTimeline(defaultSec, 'vi')
+  })
+  const [frameIndex, setFrameIndex] = useState(0)
+  const [dataStatus, setDataStatus] = useState<{ key: string; arg?: any }>(() => ({ key: 'status_loading' }))
+  const [mapLayersInitialized, setMapLayersInitialized] = useState(false)
+  const renderDataStatus = () => {
+    const { key, arg } = dataStatus
+    const template = translations[lang][key] || key
+    if (arg !== undefined) {
+      return template.replace('{0}', String(arg))
+    }
+    return template
+  }
+  const [scriptTexts, setScriptTexts] = useState<Record<DisasterScenario['id'], ScriptText>>(() =>
+    scenarios.reduce(
+      (texts, item) => ({
+        ...texts,
+        [item.id]: createScriptText(item),
+      }),
+      {} as Record<DisasterScenario['id'], ScriptText>,
+    ),
+  )
+
+  // Sync script texts when selected language changes
+  useEffect(() => {
+    setScriptTexts(() => {
+      return scenarios.reduce((texts, item) => {
+        const id = item.id
+        return {
+          ...texts,
+          [id]: {
+            title: translations[lang][id] || item.title,
+            headline: translations[lang][`${id}_headline`] || item.headline,
+            subtitle: translations[lang][`${id}_subtitle`] || item.subtitle,
+          }
+        }
+      }, {} as Record<DisasterScenario['id'], ScriptText>)
+    })
+  }, [lang])
+  const [rainRangeDraft, setRainRangeDraft] = useState<RainRange>(() => createDefaultRainRange())
+  const [rainRange, setRainRange] = useState<RainRange>(() => createDefaultRainRange())
+  const [columnReveal, setColumnReveal] = useState(1)
+  const [cameraPanelOpen, setCameraPanelOpen] = useState(false)
+  const [cameraShots, setCameraShots] = useState<CameraShot[]>(() => createDefaultCameraShots())
+  const [draggingShotId, setDraggingShotId] = useState<string | null>(null)
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle')
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [recordingExtension, setRecordingExtension] = useState<RecordingFormat['extension']>('webm')
+  const [recordingError, setRecordingError] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const [overlayVisibility, setOverlayVisibility] = useState<OverlayVisibility>(defaultOverlayVisibility)
+  const [shortcutChromeHidden, setShortcutChromeHidden] = useState(false)
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
+  const [refreshNonce, setRefreshNonce] = useState(0)
+  const [showEditor, setShowEditor] = useState(false)
+  const [showControls, setShowControls] = useState(true)
+  const [is3DMode, setIs3DMode] = useState(true)
+  const is3DModeRef = useRef(is3DMode)
+  const [mapStyleLoaded, setMapStyleLoaded] = useState(false)
+  useEffect(() => {
+    is3DModeRef.current = is3DMode
+  }, [is3DMode])
+
+  const scenario = useMemo(
+    () => scenarios.find((item) => item.id === scenarioId) ?? scenarios[0],
+    [scenarioId],
+  )
+  const scenarioRef = useRef(scenario)
+  useEffect(() => {
+    scenarioRef.current = scenario
+  }, [scenario])
+  const scriptText = scriptTexts[scenario.id] ?? createScriptText(scenario)
+  const rainRangeHours = useMemo(() => getRangeHours(rainRangeDraft), [rainRangeDraft])
+
+  const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
+  const activeFrame = timeline[activeFrameIndex]
+  const activeScenario = useMemo(
+    () => ({
+      ...scenario,
+      updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
+      source: activeFrame?.source ?? scenario.source,
+      points: activeFrame?.points ?? scenario.points,
+    }),
+    [activeFrame, scenario],
+  )
+  const legendTicks = useMemo(() => createLegendTicks(activeScenario), [activeScenario])
+
+  const gridCells = useMemo(() => {
+    if (activeFrame?.gridPoints?.length) {
+      return activeFrame.gridPoints
+        .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
+        .map((point) => ({
+          id: `${activeScenario.id}-${point.id}`,
+          lon: point.lon,
+          lat: point.lat,
+          value: point.value,
+        }))
+    }
+
+    return buildVietnamGrid(activeScenario, vietnamGeoJson)
+  }, [activeFrame, activeScenario, vietnamGeoJson])
+
+  const regionalFeatures = useMemo(() => buildRegionalFeatures(vietnamGeoJson, activeScenario), [activeScenario, vietnamGeoJson])
+  const visibleCellCount = regionLayer === 'regions' ? regionalFeatures.length : gridCells.length
+
+  const topPoints = useMemo(
+    () => {
+      const points =
+        regionLayer === 'regions'
+          ? regionalFeatures.map((feature) => ({
+              id: feature.properties.id,
+              name: feature.properties.label,
+              names: {
+                vi: translations['vi'][feature.properties.id] || feature.properties.label,
+                en: translations['en'][feature.properties.id] || feature.properties.label,
+                ko: translations['ko'][feature.properties.id] || feature.properties.label,
+              },
+              value: feature.properties.value,
+            }))
+          : activeScenario.points
+
+      return [...points]
+        .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5)
+    },
+    [activeScenario, regionLayer, regionalFeatures],
+  )
+
+  const selectedTrendData = useMemo(() => {
+    return timeline.map((frame, idx) => {
+      const point = frame.points.find((p) => p.id === selectedStationId)
+      return {
+        value: point?.value ?? 0,
+        label: frame.label,
+        index: idx,
+      }
+    })
+  }, [timeline, selectedStationId])
+
+  const calloutPoints = useMemo<CalloutPoint[]>(
+    () =>
+      [...activeScenario.points]
+        .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
+        .sort((a, b) => b.lat - a.lat)
+        .map((point, index) => {
+          const layout = CALLOUT_LAYOUTS[point.id] ?? {
+            nudgeX: index % 2 ? 16 : -16,
+            stemHeight: 42,
+          }
+
+          return {
+            ...point,
+            z: 0,
+            offset: [layout.nudgeX, 0],
+            ...createCalloutIcon(point, lang),
+          }
+        }),
+    [activeScenario, lang],
+  )
+
+  const gridGeoJson = useMemo(() => {
+    const cells = regionLayer === 'stations' ? gridCells : []
+    const rawGeo = buildGridGeoJson(cells, activeScenario.gridCellSizeMeters)
+    
+    return {
+      ...rawGeo,
+      features: rawGeo.features.map((f, index) => {
+        const cell = cells[index]
+        return {
+          ...f,
+          properties: {
+            ...f.properties,
+            elevation: getColumnElevationValue(cell, activeScenario),
+            color: rgbaToCss(valueToSteppedColor(cell.value, activeScenario.palette, 238)),
+          }
+        }
+      })
+    }
+  }, [regionLayer, gridCells, activeScenario])
+
+  const regionalFeaturesGeoJson = useMemo(() => {
+    const features = regionLayer === 'regions' ? regionalFeatures : []
+    return {
+      type: 'FeatureCollection',
+      features: features.map((f) => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          elevation: getRegionalElevationValue(f.properties.value, activeScenario),
+          color: rgbaToCss(valueToSteppedColor(f.properties.value, activeScenario.palette, 218)),
+        },
+      })),
+    }
+  }, [regionLayer, regionalFeatures, activeScenario])
+
+  const regionalLabelsGeoJson = useMemo(() => {
+    const features = overlayVisibility.provinceLabels && regionLayer === 'regions' ? regionalFeatures : []
+    return {
+      type: 'FeatureCollection',
+      features: features.map((f) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [f.properties.lon, f.properties.lat, 0],
+        },
+        properties: {
+          id: f.properties.id,
+          text: `${translations[lang][f.properties.id] || f.properties.label} ${formatPointValue(f.properties.value)}${activeScenario.unit}`,
+        },
+      })),
+    }
+  }, [overlayVisibility.provinceLabels, regionLayer, regionalFeatures, activeScenario, lang])
+
+  const calloutPinsGeoJson = useMemo(() => {
+    const points = (overlayVisibility.callouts && regionLayer === 'stations') ? calloutPoints : []
+    return {
+      type: 'FeatureCollection',
+      features: points.map((p) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [p.lon, p.lat, 0],
+        },
+        properties: {
+          id: p.id,
+          name: p.name,
+          value: p.value,
+        },
+      })),
+    }
+  }, [overlayVisibility.callouts, calloutPoints, regionLayer])
+
+  useEffect(() => {
+    fetch('/data/vietnam-provinces.geojson')
+      .then((response) => response.json())
+      .then((data: VietnamGeoJson) => setVietnamGeoJson(data))
+      .catch(() => setVietnamGeoJson(null))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const requestId = (requestSeqRef.current += 1)
+
+    if (!scenario.kmaCategory) {
+      setFrameIndex(0)
+      setTimeline(generateMockTimeline(scenario, lang))
+      setDataStatus({ key: 'status_ai_forecast' })
+      return
+    }
+
+    if (scenario.id === 'rain') {
+      setFrameIndex(0)
+      setTimeline([createRainRangeFrame(scenario, rainRange)])
+      setDataStatus({ key: 'status_rain_range' })
+    }
+
+    loadWeatherTimeline(scenario, controller.signal, {
+      forceRefresh: refreshNonce > 0,
+      ...(scenario.id === 'rain' ? rainRange : {}),
+    })
+      .then((payload) => {
+        if (cancelled || requestId !== requestSeqRef.current || payload.scenarioId !== scenario.id) {
+          return
+        }
+
+        setFrameIndex(0)
+        setTimeline(payload.frames.length > 1 ? payload.frames : generateMockTimeline(scenario, lang))
+        setColumnReveal(1)
+        setDataStatus({
+          key: payload.cacheHit ? 'status_cache_hit' : 'status_cache_update',
+          arg: payload.successfulPoints,
+        })
+      })
+      .catch(() => {
+        if (cancelled || requestId !== requestSeqRef.current) {
+          return
+        }
+
+        setTimeline(generateMockTimeline(scenario, lang))
+        setColumnReveal(1)
+        setDataStatus({ key: 'status_api_fail' })
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [rainRange, scenario, refreshNonce, lang])
+
+  // Mouse right click listener and context menu prevention
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) {
+        isRightMouseDownRef.current = true
+      }
+    }
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 2) {
+        isRightMouseDownRef.current = false
+      }
+    }
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    const container = mapContainerRef.current
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+    }
+    if (container) {
+      container.addEventListener('contextmenu', handleContextMenu)
+    }
+
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('mouseup', handleMouseUp)
+      if (container) {
+        container.removeEventListener('contextmenu', handleContextMenu)
+      }
+    }
+  }, [mapStyleLoaded])
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) {
+      return
+    }
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: createMapStyle('satellite'),
+      center: [109.5, 15.0],
+      zoom: 4.8,
+      pitch: 0,
+      bearing: 0,
+      attributionControl: false,
+      projection: is3DModeRef.current ? { type: 'globe' } : { type: 'mercator' },
+    } as any)
+
+    // Smooth and gentle scroll wheel zoom speed
+    map.scrollZoom.setWheelZoomRate(1 / 280)
+
+    // setFog shim for MapLibre GL JS v5 (translates Mapbox setFog parameters to MapLibre setSky)
+    ;(map as any).setFog = function (options: any) {
+      if (!options) return
+      const skyOptions: any = {}
+      if (options.color) {
+        skyOptions['horizon-color'] = options.color
+        skyOptions['fog-color'] = options.color
+      }
+      if (options['high-color']) {
+        skyOptions['sky-color'] = options['high-color']
+      }
+      if (options['horizon-blend'] !== undefined) {
+        skyOptions['sky-horizon-blend'] = options['horizon-blend']
+      }
+      if (typeof map.setSky === 'function') {
+        map.setSky(skyOptions)
+      } else {
+        const style = map.getStyle()
+        if (style) {
+          style.sky = { ...style.sky, ...skyOptions }
+          map.setStyle(style)
+        }
+      }
+    }
+
+    // Re-apply projection, fog and trigger resize when style is loaded
+    map.on('style.load', () => {
+      try {
+        map.setProjection(is3DModeRef.current ? { type: 'globe' } : { type: 'mercator' })
+      } catch (e) {
+        console.error('Failed to apply projection on style load:', e)
+      }
+      try {
+        ;(map as any).setFog({
+          'color': 'rgb(186, 210, 235)',      // 지구 경계선 안쪽 하부 대기
+          'high-color': 'rgb(36, 92, 223)',   // 외부 상부 대기 광원 (Atmosphere Glow)
+          'horizon-blend': 0.02,              // 대기 광 두께
+          'space-color': 'rgb(5, 5, 12)',     // 우주 배경색
+          'star-intensity': 0.8               // 배경 별빛 강도
+        })
+      } catch (e) {
+        console.error('Failed to apply fog on style load:', e)
+      }
+      map.resize()
+      setMapStyleLoaded(true)
+    })
+
+    map.on('load', () => {
+      map.resize()
+    })
+
+    // ResizeObserver: 컨테이너 실제 크기 변화에 즉각 반응 (setTimeout보다 정확)
+    const containerEl = mapContainerRef.current!
+    const resizeObserver = new ResizeObserver(() => {
+      map.resize()
+    })
+    resizeObserver.observe(containerEl)
+
+    // 첫 렌더 프레임에 즉시 resize 적용 (마운트 직후 CSS 레이아웃 완료 시점)
+    const rafId = requestAnimationFrame(() => {
+      map.resize()
+    })
+
+    mapRef.current = map
+
+    return () => {
+      resizeObserver.disconnect()
+      cancelAnimationFrame(rafId)
+      map.remove()
+      mapRef.current = null
+      setMapStyleLoaded(false)
+    }
+  }, [])
+
+  useEffect(
+    () => () => {
+      cameraRunIdRef.current += 1
+
+      if (revealFrameRef.current) {
+        cancelAnimationFrame(revealFrameRef.current)
+      }
+
+      if (zoomFrameRef.current) {
+        cancelAnimationFrame(zoomFrameRef.current)
+      }
+
+      mediaRecorderRef.current?.stop()
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+    },
+    [],
+  )
+
+  useEffect(
+    () => () => {
+      if (recordingUrl) {
+        URL.revokeObjectURL(recordingUrl)
+      }
+    },
+    [recordingUrl],
+  )
+
+
+
+  useEffect(() => {
+    if (!isTimelinePlaying || timeline.length <= 1) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      setFrameIndex((value) => (value + 1) % timeline.length)
+    }, 1500)
+
+    return () => window.clearInterval(timer)
+  }, [isTimelinePlaying, timeline.length])
+
+  useEffect(() => {
+    const map = mapRef.current
+
+    if (!map) {
+      return
+    }
+
+    setMapStyleLoaded(false)
+    map.setStyle(createMapStyle(mapTheme), { diff: false })
+  }, [mapTheme])
+
+  useEffect(() => {
+    const map = mapRef.current
+
+    if (!map) {
+      return
+    }
+
+    map.easeTo({
+      center: scenario.center,
+      zoom: scenario.zoom,
+      pitch: getDynamicPitch(),
+      bearing: is3DMode ? scenario.bearing : 0,
+      duration: 750,
+      easing: (t) => t * (2 - t),
+    })
+  }, [scenario, is3DMode])
+
+  // selectedStationId에 따라 지도 핀 크기 및 색상 강조 적용
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoaded) return
+
+    try {
+      if (map.getLayer('callout-pins-native')) {
+        map.setPaintProperty('callout-pins-native', 'circle-radius', [
+          'case',
+          ['==', ['get', 'id'], selectedStationId],
+          6.5,
+          3.8,
+        ])
+        map.setPaintProperty('callout-pins-native', 'circle-color', [
+          'case',
+          ['==', ['get', 'id'], selectedStationId],
+          '#1a75ff',
+          '#f8fbff',
+        ])
+      }
+    } catch (e) {
+      console.warn('Failed to update paint property for callout-pins-native:', e)
+    }
+  }, [selectedStationId, mapStyleLoaded])
+
+  // regionLayer 및 overlayVisibility.callouts 변경 시 측정지점 핀 및 말풍선 레이어 visibility 제어
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoaded || !mapLayersInitialized) return
+
+    const visibility = (overlayVisibility.callouts && regionLayer === 'stations') ? 'visible' : 'none'
+    try {
+      if (map.getLayer('callout-pins-native')) {
+        map.setLayoutProperty('callout-pins-native', 'visibility', visibility)
+      }
+      if (map.getLayer('callout-labels-native')) {
+        map.setLayoutProperty('callout-labels-native', 'visibility', visibility)
+      }
+    } catch (e) {
+      console.warn('Failed to update visibility for callout layers:', e)
+    }
+  }, [regionLayer, overlayVisibility.callouts, mapStyleLoaded, mapLayersInitialized])
+
+  // 지도 핀/배너 클릭 리스너 및 마우스 오버 커서 변경 처리
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoaded) return
+
+    const handlePinClick = (e: any) => {
+      if (e.features && e.features[0]) {
+        const id = e.features[0].properties?.id
+        if (id) {
+          setSelectedStationId(id)
+        }
+      }
+    }
+
+    const setPointerCursor = () => {
+      map.getCanvas().style.cursor = 'pointer'
+    }
+
+    const resetCursor = () => {
+      map.getCanvas().style.cursor = ''
+    }
+
+    try {
+      map.on('click', 'callout-pins-native', handlePinClick)
+      map.on('click', 'callout-labels-native', handlePinClick)
+      map.on('mouseenter', 'callout-pins-native', setPointerCursor)
+      map.on('mouseleave', 'callout-pins-native', resetCursor)
+      map.on('mouseenter', 'callout-labels-native', setPointerCursor)
+      map.on('mouseleave', 'callout-labels-native', resetCursor)
+    } catch (e) {
+      console.warn('Failed to bind click/hover events to map layers:', e)
+    }
+
+    return () => {
+      try {
+        map.off('click', 'callout-pins-native', handlePinClick)
+        map.off('click', 'callout-labels-native', handlePinClick)
+        map.off('mouseenter', 'callout-pins-native', setPointerCursor)
+        map.off('mouseleave', 'callout-pins-native', resetCursor)
+        map.off('mouseenter', 'callout-labels-native', setPointerCursor)
+        map.off('mouseleave', 'callout-labels-native', resetCursor)
+      } catch (e) {
+        // Ignore style change teardown errors
+      }
+    }
+  }, [mapStyleLoaded])
+
+  // 1. MapLibre Native 소스 및 레이어 등록 관리
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoaded) {
+      return
+    }
+
+    setMapLayersInitialized(false)
+    const initMapLayers = async () => {
+      // 1-0. 이미지 리소스를 사전에 로딩하여 레이어 등록 시점에 레이스 컨디션 해결
+      try {
+        const points = overlayVisibility.callouts ? calloutPoints : []
+        for (const point of points) {
+          const imageId = `station-callout-${point.id}`
+          const svgContent = decodeURIComponent(point.iconUrl.replace('data:image/svg+xml;charset=utf-8,', ''))
+          await addSvgImageToMap(map, imageId, svgContent)
+        }
+      } catch (err) {
+        console.warn('Failed to pre-load callout images:', err)
+      }
+
+      // 1-1. 소스 등록
+      if (!map.getSource('vietnam-regions-source')) {
+        map.addSource('vietnam-regions-source', {
+          type: 'geojson',
+          data: regionalFeaturesGeoJson as any,
+        })
+      }
+      if (!map.getSource('kma-grid-source')) {
+        map.addSource('kma-grid-source', {
+          type: 'geojson',
+          data: gridGeoJson as any,
+        })
+      }
+      if (!map.getSource('callout-pins-source')) {
+        map.addSource('callout-pins-source', {
+          type: 'geojson',
+          data: calloutPinsGeoJson as any,
+        })
+      }
+      if (!map.getSource('regional-labels-source')) {
+        map.addSource('regional-labels-source', {
+          type: 'geojson',
+          data: regionalLabelsGeoJson as any,
+        })
+      }
+
+      // 1-2. 3D 폴리곤 레이어 (fill-extrusion)
+      if (!map.getLayer('regional-polygons-native')) {
+        map.addLayer({
+          id: 'regional-polygons-native',
+          type: 'fill-extrusion',
+          source: 'vietnam-regions-source',
+          paint: {
+            'fill-extrusion-color': ['get', 'color'],
+            'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
+            'fill-extrusion-base': 0,
+            'fill-extrusion-opacity': 1.0,
+            'fill-extrusion-vertical-gradient': true,
+          },
+        })
+      }
+
+      // 1-3. 격자 기둥 레이어 (fill-extrusion)
+      if (!map.getLayer('kma-grid-columns-native')) {
+        map.addLayer({
+          id: 'kma-grid-columns-native',
+          type: 'fill-extrusion',
+          source: 'kma-grid-source',
+          paint: {
+            'fill-extrusion-color': ['get', 'color'],
+            'fill-extrusion-height': ['*', ['get', 'elevation'], columnReveal],
+            'fill-extrusion-base': 0,
+            'fill-extrusion-opacity': 0.95,
+            'fill-extrusion-vertical-gradient': true,
+          },
+        })
+      }
+
+      // 1-4. 측정지점 핀 레이어 (circle)
+      if (!map.getLayer('callout-pins-native')) {
+        map.addLayer({
+          id: 'callout-pins-native',
+          type: 'circle',
+          source: 'callout-pins-source',
+          paint: {
+            'circle-radius': [
+              'case',
+              ['==', ['get', 'id'], selectedStationId],
+              6.5,
+              3.8,
+            ],
+            'circle-color': [
+              'case',
+              ['==', ['get', 'id'], selectedStationId],
+              '#1a75ff',
+              '#f8fbff',
+            ],
+            'circle-stroke-width': 1.8,
+            'circle-stroke-color': '#111820',
+          },
+        })
+      }
+
+      // 1-5. 말풍선 아이콘 레이어 (symbol)
+      if (!map.getLayer('callout-labels-native')) {
+        map.addLayer({
+          id: 'callout-labels-native',
+          type: 'symbol',
+          source: 'callout-pins-source',
+          layout: {
+            'icon-image': ['concat', 'station-callout-', ['get', 'id']],
+            'icon-size': 1.0,
+            'icon-anchor': 'bottom',
+            'icon-offset': [0, -4],
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+          },
+        })
+      }
+
+      // 1-6. 광역지역 이름 라벨 레이어 (symbol)
+      if (!map.getLayer('regional-labels-native')) {
+        map.addLayer({
+          id: 'regional-labels-native',
+          type: 'symbol',
+          source: 'regional-labels-source',
+          layout: {
+            'text-field': ['get', 'text'],
+            'text-size': 13.5,
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          paint: {
+            'text-color': '#f8fbff',
+            'text-halo-color': '#050e18',
+            'text-halo-width': 1.8,
+          },
+        })
+      }
+      setMapLayersInitialized(true)
+    }
+
+    if (map.isStyleLoaded()) {
+      initMapLayers()
+    } else {
+      map.once('style.load', initMapLayers)
+    }
+  }, [mapStyleLoaded, mapTheme])
+
+  // 2. GeoJSON 소스 데이터 동적 업데이트 및 말풍선 SVG 갱신
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoaded || !mapLayersInitialized) {
+      return
+    }
+
+    const updateSources = () => {
+      const regionSource = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
+      if (regionSource) {
+        regionSource.setData(regionalFeaturesGeoJson as any)
+      }
+
+      const gridSource = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
+      if (gridSource) {
+        gridSource.setData(gridGeoJson as any)
+      }
+
+      const pinsSource = map.getSource('callout-pins-source') as maplibregl.GeoJSONSource
+      if (pinsSource) {
+        pinsSource.setData(calloutPinsGeoJson as any)
+      }
+
+      const labelsSource = map.getSource('regional-labels-source') as maplibregl.GeoJSONSource
+      if (labelsSource) {
+        labelsSource.setData(regionalLabelsGeoJson as any)
+      }
+    }
+
+    // 2-1. 즉시 데이터 주입
+    updateSources()
+
+    // 2-2. 맵 스타일 로딩 직후 타이밍 씹힘 방지를 위한 120ms 후 지연 재확인 주입
+    const timer = setTimeout(updateSources, 120)
+
+    // 말풍선 SVG 이미지 업데이트
+    const updateImages = async () => {
+      const points = overlayVisibility.callouts ? calloutPoints : []
+      for (const point of points) {
+        const imageId = `station-callout-${point.id}`
+        const svgContent = decodeURIComponent(point.iconUrl.replace('data:image/svg+xml;charset=utf-8,', ''))
+        await addSvgImageToMap(map, imageId, svgContent)
+      }
+    }
+
+    updateImages().catch((err) => console.error('Failed to update map station images:', err))
+
+    return () => clearTimeout(timer)
+  }, [
+    mapStyleLoaded,
+    mapLayersInitialized,
+    gridGeoJson,
+    regionalFeaturesGeoJson,
+    regionalLabelsGeoJson,
+    calloutPinsGeoJson,
+    calloutPoints,
+    overlayVisibility.callouts,
+    regionLayer,
+  ])
+
+  // 3. 3D 모드 전환 및 투영법 연동 + 애니메이션(columnReveal) 연동
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoaded) {
+      return
+    }
+
+    // 3-1. 프로젝션 전환
+    try {
+      map.setProjection(is3DMode ? { type: 'globe' } : { type: 'mercator' })
+    } catch (e) {
+      console.error('Failed to update map projection:', e)
+    }
+
+    // 3-2. 레이어의 fill-extrusion-height 갱신
+    if (map.getLayer('kma-grid-columns-native')) {
+      map.setPaintProperty(
+        'kma-grid-columns-native',
+        'fill-extrusion-height',
+        ['*', ['get', 'elevation'], columnReveal]
+      )
+    }
+
+    if (map.getLayer('regional-polygons-native')) {
+      map.setPaintProperty(
+        'regional-polygons-native',
+        'fill-extrusion-height',
+        ['*', ['get', 'elevation'], columnReveal]
+      )
+    }
+  }, [mapStyleLoaded, is3DMode, columnReveal])
+
+  const startColumnReveal = () => {
+    if (revealFrameRef.current) {
+      cancelAnimationFrame(revealFrameRef.current)
+    }
+
+    const startedAt = performance.now()
+    const duration = 850
+    setColumnReveal(0.02)
+
+    const tick = (time: number) => {
+      const progress = Math.min(1, (time - startedAt) / duration)
+      const eased = progress * progress * (3 - 2 * progress)
+      setColumnReveal(eased)
+
+      if (progress < 1) {
+        revealFrameRef.current = requestAnimationFrame(tick)
+      } else {
+        revealFrameRef.current = null
+      }
+    }
+
+    revealFrameRef.current = requestAnimationFrame(tick)
+    window.setTimeout(() => {
+      setColumnReveal((value) => (value < 0.98 ? 1 : value))
+    }, duration + 180)
+  }
+
+  const captureMapThumbnail = (view: Pick<CameraShot, 'center' | 'zoom' | 'pitch' | 'bearing'>, index: number) => {
+    const map = mapRef.current
+
+    if (!map) {
+      return createCameraThumbnail(view, index)
+    }
+
+    try {
+      return map.getCanvas().toDataURL('image/jpeg', 0.58)
+    } catch {
+      return createCameraThumbnail(view, index)
+    }
+  }
+
+  const addCameraShot = () => {
+    const map = mapRef.current
+
+    setCameraShots((items) => {
+      if (items.length >= 10) {
+        return items
+      }
+
+      const center = map?.getCenter()
+      const view = {
+        center: center ? ([center.lng, center.lat] as [number, number]) : scenario.center,
+        zoom: map?.getZoom() ?? scenario.zoom,
+        pitch: map?.getPitch() ?? scenario.pitch,
+        bearing: map?.getBearing() ?? scenario.bearing,
+      }
+      const index = items.length
+
+      return [
+        ...items,
+        {
+          id: `camera-${Date.now()}`,
+          name: `${index + 1}번`,
+          ...view,
+          holdSeconds: 1,
+          moveSeconds: 1,
+          thumbnail: captureMapThumbnail(view, index),
+        },
+      ]
+    })
+  }
+
+  const updateCameraShot = (id: string, patch: Partial<CameraShot>) => {
+    setCameraShots((items) =>
+      items.map((item, index) => {
+        if (item.id !== id) {
+          return item
+        }
+
+        const next = { ...item, ...patch }
+        const shouldRefreshThumbnail = 'center' in patch || 'zoom' in patch || 'pitch' in patch || 'bearing' in patch
+
+        return shouldRefreshThumbnail
+          ? {
+              ...next,
+              thumbnail: createCameraThumbnail(next, index),
+            }
+          : next
+      }),
+    )
+  }
+
+  const updateCameraShotNumber = (id: string, patch: Partial<Pick<CameraShot, 'zoom' | 'pitch' | 'bearing'>>) => {
+    setCameraShots((items) =>
+      items.map((item, index) => {
+        if (item.id !== id) {
+          return item
+        }
+
+        const next = { ...item, ...patch }
+
+        return {
+          ...next,
+          thumbnail: createCameraThumbnail(next, index),
+        }
+      }),
+    )
+  }
+
+  const updateCameraShotCenter = (id: string, axis: 0 | 1, value: number) => {
+    setCameraShots((items) =>
+      items.map((item, index) => {
+        if (item.id !== id) {
+          return item
+        }
+
+        const center: [number, number] = [...item.center]
+        center[axis] = value
+        const next = { ...item, center }
+
+        return {
+          ...next,
+          thumbnail: createCameraThumbnail(next, index),
+        }
+      }),
+    )
+  }
+
+  const moveCameraShot = (dragId: string, targetId: string) => {
+    if (dragId === targetId) {
+      return
+    }
+
+    setCameraShots((items) => {
+      const dragIndex = items.findIndex((item) => item.id === dragId)
+      const targetIndex = items.findIndex((item) => item.id === targetId)
+
+      if (dragIndex < 0 || targetIndex < 0) {
+        return items
+      }
+
+      const next = [...items]
+      const [dragged] = next.splice(dragIndex, 1)
+      next.splice(targetIndex, 0, dragged)
+      return next
+    })
+  }
+
+  const removeCameraShot = (id: string) => {
+    setCameraShots((items) => (items.length <= 1 ? items : items.filter((item) => item.id !== id)))
+  }
+
+  const goToCameraShot = (shot: CameraShot, duration = 720) => {
+    const map = mapRef.current
+
+    if (!map) {
+      return
+    }
+
+    map.easeTo({
+      center: shot.center,
+      zoom: shot.zoom,
+      pitch: shot.pitch,
+      bearing: shot.bearing,
+      duration,
+      easing: (t) => t * t * (3 - 2 * t),
+    })
+  }
+
+  const playCamera = async () => {
+    const map = mapRef.current
+
+    setCameraPanelOpen(true)
+
+    if (!map || cameraShots.length === 0) {
+      return
+    }
+
+    const runId = (cameraRunIdRef.current += 1)
+
+    for (const shot of cameraShots) {
+      if (runId !== cameraRunIdRef.current) {
+        return
+      }
+
+      const moveMs = Math.max(0.4, shot.moveSeconds) * 1000
+      goToCameraShot(shot, moveMs)
+      await wait(moveMs + 80)
+
+      if (runId !== cameraRunIdRef.current) {
+        return
+      }
+
+      await wait(Math.max(0, shot.holdSeconds) * 1000)
+    }
+  }
+
+  const startRecording = async () => {
+    setRecordingError('')
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setRecordingError('이 브라우저에서는 화면 녹화를 지원하지 않습니다.')
+      return
+    }
+
+    try {
+      if (recordingUrl) {
+        URL.revokeObjectURL(recordingUrl)
+        setRecordingUrl(null)
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: 30,
+        },
+        audio: false,
+      })
+      const recordingFormat = getPreferredRecordingFormat()
+      const recorder = new MediaRecorder(stream, { mimeType: recordingFormat.mimeType })
+
+      recordingChunksRef.current = []
+      recordingStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+      setRecordingExtension(recordingFormat.extension)
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: recordingFormat.mimeType })
+        const url = URL.createObjectURL(blob)
+        setRecordingUrl(url)
+        setRecordingState('ready')
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+        recordingStreamRef.current = null
+        mediaRecorderRef.current = null
+      }
+
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        stopRecording()
+      })
+
+      recorder.start(250)
+      setRecordingState('recording')
+    } catch (error) {
+      setRecordingState(recordingUrl ? 'ready' : 'idle')
+      setRecordingError(error instanceof Error ? error.message : '녹화를 시작하지 못했습니다.')
+    }
+  }
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop()
+      return
+    }
+
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+    recordingStreamRef.current = null
+    setRecordingState(recordingUrl ? 'ready' : 'idle')
+  }
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null
+      const tagName = element?.tagName?.toLowerCase()
+
+      return tagName === 'input' || tagName === 'textarea' || element?.isContentEditable
+    }
+
+    const stopZoom = () => {
+      zoomDirectionRef.current = 0
+
+      if (zoomFrameRef.current) {
+        cancelAnimationFrame(zoomFrameRef.current)
+        zoomFrameRef.current = null
+      }
+    }
+
+    const startZoom = (direction: number) => {
+      const map = mapRef.current
+
+      if (!map) {
+        return
+      }
+
+      zoomDirectionRef.current = direction
+
+      if (zoomFrameRef.current) {
+        return
+      }
+
+      let previousTime = performance.now()
+      const zoomSpeed = 1.9
+
+      const tick = (time: number) => {
+        const activeMap = mapRef.current
+
+        if (!activeMap || zoomDirectionRef.current === 0) {
+          zoomFrameRef.current = null
+          return
+        }
+
+        const deltaSeconds = Math.min(48, time - previousTime) / 1000
+        previousTime = time
+        activeMap.zoomTo(
+          clamp(activeMap.getZoom() + zoomDirectionRef.current * zoomSpeed * deltaSeconds, 3.4, 9.4),
+          { duration: 0 },
+        )
+        zoomFrameRef.current = requestAnimationFrame(tick)
+      }
+
+      zoomFrameRef.current = requestAnimationFrame(tick)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) {
+        return
+      }
+
+      const map = mapRef.current
+      const key = event.key.toLowerCase()
+
+      if (isRightMouseDownRef.current && (key === 'w' || key === 's')) {
+        event.preventDefault()
+        if (key === 'w') startZoom(1)
+        if (key === 's') startZoom(-1)
+        return
+      }
+
+      if (key === '+' || key === '=') {
+        event.preventDefault()
+        startZoom(1)
+        return
+      }
+
+      if (key === '-' || key === '_') {
+        event.preventDefault()
+        startZoom(-1)
+        return
+      }
+
+      if (key === 'r') {
+        event.preventDefault()
+
+        if (!event.repeat) {
+          if (recordingState === 'recording') {
+            stopRecording()
+          } else {
+            void startRecording()
+          }
+        }
+
+        return
+      }
+
+      if (key === 'm') {
+        event.preventDefault()
+
+        if (!event.repeat) {
+          setShortcutChromeHidden((value) => !value)
+        }
+
+        return
+      }
+
+      if (event.code === 'Space') {
+        event.preventDefault()
+
+        if (!event.repeat && showControls && overlayVisibility.timeline && timeline.length > 1) {
+          setIsTimelinePlaying((value) => !value)
+        }
+
+        return
+      }
+
+      const distance = event.shiftKey ? 90 : 45
+      const moves: Record<string, [number, number]> = {
+        w: [0, -distance],
+        a: [-distance, 0],
+        s: [0, distance],
+        d: [distance, 0],
+      }
+      const move = moves[key]
+
+      if (!map || !move) {
+        return
+      }
+
+      event.preventDefault()
+      // globe 모드에서는 panBy+duration이 'Easing around a point is not supported' 경고를 발생시킴
+      if (is3DModeRef.current) {
+        map.panBy(move)
+      } else {
+        map.panBy(move, { duration: 160 })
+      }
+    }
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
+
+      if (
+        (zoomDirectionRef.current > 0 && (key === '+' || key === '=' || key === 'w')) ||
+        (zoomDirectionRef.current < 0 && (key === '-' || key === '_' || key === 's'))
+      ) {
+        stopZoom()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      stopZoom()
+    }
+  }, [overlayVisibility.timeline, recordingState, recordingUrl, scenario.id, showControls, timeline.length])
+
+  const toggleOverlay = (key: OverlayKey) => {
+    setOverlayVisibility((value) => ({
+      ...value,
+      [key]: !value[key],
+    }))
+  }
+
+  const categories = [
+    {
+      id: 'observation',
+      title: '기상관측정보',
+      scenarioIds: ['temperature', 'humidity', 'wind', 'rain'],
+    },
+    {
+      id: 'forecast',
+      title: '기상예측정보',
+      scenarioIds: ['forecast_temp', 'forecast_rain'],
+    },
+    {
+      id: 'danger',
+      title: '위험지수정보',
+      scenarioIds: ['heat', 'wildfire', 'uv', 'aqi', 'future_danger'],
+    },
+  ]
+
+  const scenarioIcon = {
+    humidity: Droplet,
+    wind: Wind,
+    uv: SunDim,
+    aqi: Activity,
+    temperature: Thermometer,
+    rain: CloudRain,
+    heat: Sun,
+    wildfire: Flame,
+    forecast_temp: TrendingUp,
+    forecast_rain: CloudRain,
+    future_danger: AlertTriangle,
+  }
+
+  const selectScenario = (nextScenarioId: typeof scenarioId) => {
+    const nextScenario = scenarios.find((item) => item.id === nextScenarioId) ?? scenarios[0]
+
+    setScenarioId(nextScenario.id)
+    setFrameIndex(0)
+    startColumnReveal()
+    setIsTimelinePlaying(false)
+    setDataStatus({ key: nextScenario.kmaCategory ? 'status_checking' : 'status_sample' })
+    setTimeline(generateMockTimeline(nextScenario, lang))
+
+    if (!nextScenario.kmaCategory) {
+      return
+    }
+  }
+
+  const updateScriptText = (field: keyof ScriptText, value: string) => {
+    setScriptTexts((items) => ({
+      ...items,
+      [scenario.id]: {
+        ...(items[scenario.id] ?? createScriptText(scenario)),
+        [field]: value,
+      },
+    }))
+  }
+
+  const applyRainRange = () => {
+    if (getRangeHours(rainRangeDraft) <= 0) {
+      return
+    }
+
+    setIsTimelinePlaying(false)
+    setFrameIndex(0)
+    setColumnReveal(1)
+    setRainRange(rainRangeDraft)
+
+    if (scenario.id === 'rain') {
+      setTimeline([createRainRangeFrame(scenario, rainRangeDraft)])
+      setDataStatus({ key: 'status_rain_apply' })
+    }
+  }
+
+  return (
+    <main className={`broadcast-shell scenario-${scenario.id} map-${mapTheme} lang-${lang} ${!showControls ? 'controls-hidden' : ''}`}>
+      <section className="stage" aria-label="재난 시각화 방송 화면">
+        <div ref={mapContainerRef} className="map-canvas" />
+        <div className="map-vignette" />
+        <div className="scanline" />
+
+        {overlayVisibility.title && (
+          <header className="title-lockup">
+            <div className="brand-row">
+              <span className="brand-mark">VHWIS</span>
+              <span className="brand-sub">WEATHER AI</span>
+            </div>
+            <div className="headline-row">
+              <span className="topic">{scriptText.title}</span>
+              <h1>{scriptText.headline}</h1>
+            </div>
+            <p>{scriptText.subtitle}</p>
+          </header>
+        )}
+
+        {showControls && !shortcutChromeHidden && (
+          <aside className="scenario-sidebar" aria-label="기상 시나리오 선택">
+            {categories.map((cat) => (
+              <div className="category-group" key={cat.id}>
+                <h3 className="category-title">{translations[lang][cat.id] || cat.title}</h3>
+                <div className="category-tabs">
+                  {cat.scenarioIds.map((id) => {
+                    const item = scenarios.find((s) => s.id === id)
+                    if (!item) return null
+                    const Icon = scenarioIcon[id as keyof typeof scenarioIcon]
+                    const isActive = id === scenario.id
+
+                    return (
+                      <button
+                        type="button"
+                        className={`scenario-btn ${isActive ? 'active' : ''} ${id === 'future_danger' ? 'placeholder-btn' : ''}`}
+                        key={id}
+                        onClick={() => selectScenario(id as any)}
+                      >
+                        <Icon size={13} />
+                        <span>{translations[lang][id] || item.title}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </aside>
+        )}
+
+        {overlayVisibility.status && !shortcutChromeHidden && (
+          <div className="status-strip">
+            <button
+              type="button"
+              className="status-refresh"
+              onClick={() => {
+                setIsTimelinePlaying(false)
+                setFrameIndex(0)
+                setColumnReveal(1)
+                setDataStatus({ key: 'status_checking' })
+                setRefreshNonce((value) => value + 1)
+              }}
+              title={translations[lang]['refresh'] || 'Refresh'}
+            >
+              <RotateCw size={14} />
+            </button>
+            <div className="language-selector">
+              <button
+                type="button"
+                className={`lang-btn ${lang === 'vi' ? 'active' : ''}`}
+                onClick={() => setLang('vi')}
+              >
+                VI
+              </button>
+              <button
+                type="button"
+                className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
+                onClick={() => setLang('en')}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                className={`lang-btn ${lang === 'ko' ? 'active' : ''}`}
+                onClick={() => setLang('ko')}
+              >
+                KO
+              </button>
+            </div>
+            <span>{translations[lang]['live_template'] || 'LIVE TEMPLATE'}</span>
+            <span>{translateLiveText(activeFrame?.label ?? activeScenario.updatedAt, lang)}</span>
+            <span aria-label={lang === 'vi' ? `Trạng thái dữ liệu: ${renderDataStatus()}` : lang === 'en' ? `Data Status: ${renderDataStatus()}` : `데이터 상태: ${renderDataStatus()}`}>{translateLiveText(activeScenario.source, lang)}</span>
+            <span>{visibleCellCount.toLocaleString()} {translations[lang]['cells'] || 'cells'}</span>
+          </div>
+        )}
+
+        {overlayVisibility.rank && !shortcutChromeHidden && (
+          <aside className="rank-panel" aria-label={translations[lang]['rank'] || '주요 지점'}>
+            <div className="panel-heading">
+              <BarChart3 size={15} />
+              <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
+            </div>
+            {topPoints.map((point, index) => {
+              const valueColor = rgbaToCss(valueToSteppedColor(point.value, activeScenario.palette, 255));
+              const valueRange = activeScenario.maxValue - activeScenario.minValue;
+              const percent = valueRange > 0 ? ((point.value - activeScenario.minValue) / valueRange) * 100 : 50;
+              const clPercent = Math.max(2, Math.min(100, percent));
+
+              const isActive = selectedStationId === point.id;
+
+              return (
+                <div 
+                  className={`rank-row-container ${isActive ? 'active' : ''}`} 
+                  key={point.id}
+                  onClick={() => setSelectedStationId(point.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="rank-row">
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                    <b>{point.names?.[lang] || point.name}</b>
+                    <strong style={{ color: valueColor }}>
+                      {point.value}
+                      <small>{activeScenario.unit}</small>
+                    </strong>
+                  </div>
+                  <div className="rank-bar-bg">
+                    <div className="rank-bar-fill" style={{ width: `${clPercent}%`, backgroundColor: valueColor }} />
+                  </div>
+                </div>
+              );
+            })}
+          </aside>
+        )}
+
+        {showControls && cameraPanelOpen && overlayVisibility.cameraPanel && !shortcutChromeHidden && (
+          <aside className="camera-panel" aria-label="카메라 워크 설정">
+            <header>
+              <div>
+                <Camera size={15} />
+                <strong>카메라 워크</strong>
+              </div>
+              <button type="button" onClick={addCameraShot} disabled={cameraShots.length >= 10} title="현재 뷰 저장">
+                <Plus size={15} />
+              </button>
+            </header>
+            <p>{cameraShots.length}/10 views</p>
+            <div className="camera-shot-list">
+              {cameraShots.map((shot, index) => (
+                <article
+                  className={`camera-shot ${draggingShotId === shot.id ? 'dragging' : ''}`}
+                  draggable
+                  key={shot.id}
+                  onDragStart={(event) => {
+                    setDraggingShotId(shot.id)
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', shot.id)
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    const dragId = event.dataTransfer.getData('text/plain') || draggingShotId
+
+                    if (dragId) {
+                      moveCameraShot(dragId, shot.id)
+                    }
+
+                    setDraggingShotId(null)
+                  }}
+                  onDragEnd={() => setDraggingShotId(null)}
+                >
+                  <button
+                    type="button"
+                    className="camera-thumb"
+                    onClick={() => goToCameraShot(shot)}
+                    title={`${shot.name} 위치로 이동`}
+                  >
+                    <img src={shot.thumbnail} alt="" draggable={false} />
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                  </button>
+                  <div className="camera-shot-fields">
+                    <input
+                      aria-label="카메라 이름"
+                      value={shot.name}
+                      onChange={(event) => updateCameraShot(shot.id, { name: event.target.value })}
+                    />
+                    <label>
+                      <span>정지</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        step="0.1"
+                        value={shot.holdSeconds}
+                        onChange={(event) => updateCameraShot(shot.id, { holdSeconds: Number(event.target.value) })}
+                      />
+                      <span>초</span>
+                    </label>
+                    <label>
+                      <span>이동</span>
+                      <input
+                        type="number"
+                        min="0.4"
+                        max="12"
+                        step="0.1"
+                        value={shot.moveSeconds}
+                        onChange={(event) => updateCameraShot(shot.id, { moveSeconds: Number(event.target.value) })}
+                      />
+                      <span>초</span>
+                    </label>
+                  </div>
+                  <div className="camera-shot-settings" aria-label={`${shot.name} camera values`}>
+                    <label>
+                      <span>경도</span>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={Number(shot.center[0].toFixed(4))}
+                        onChange={(event) => updateCameraShotCenter(shot.id, 0, Number(event.target.value))}
+                      />
+                    </label>
+                    <label>
+                      <span>위도</span>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={Number(shot.center[1].toFixed(4))}
+                        onChange={(event) => updateCameraShotCenter(shot.id, 1, Number(event.target.value))}
+                      />
+                    </label>
+                    <label>
+                      <span>줌</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Number(shot.zoom.toFixed(2))}
+                        onChange={(event) => updateCameraShotNumber(shot.id, { zoom: Number(event.target.value) })}
+                      />
+                    </label>
+                    <label>
+                      <span>피치</span>
+                      <input
+                        type="number"
+                        step="1"
+                        value={Number(shot.pitch.toFixed(1))}
+                        onChange={(event) => updateCameraShotNumber(shot.id, { pitch: Number(event.target.value) })}
+                      />
+                    </label>
+                    <label>
+                      <span>회전</span>
+                      <input
+                        type="number"
+                        step="1"
+                        value={Number(shot.bearing.toFixed(1))}
+                        onChange={(event) => updateCameraShotNumber(shot.id, { bearing: Number(event.target.value) })}
+                      />
+                    </label>
+                  </div>
+                  <button type="button" className="camera-delete" onClick={() => removeCameraShot(shot.id)} title="카메라 삭제">
+                    <Minus size={13} />
+                  </button>
+                </article>
+              ))}
+            </div>
+            <button type="button" className="camera-run" onClick={playCamera}>
+              <Play size={13} fill="currentColor" />
+              전체 시연
+            </button>
+            <div className="record-controls" aria-label="녹화 컨트롤">
+              <button type="button" onClick={startRecording} disabled={recordingState === 'recording'}>
+                <Video size={13} />
+                녹화
+              </button>
+              <button type="button" onClick={stopRecording} disabled={recordingState !== 'recording'}>
+                <Square size={12} fill="currentColor" />
+                정지
+              </button>
+              {recordingUrl ? (
+                <a href={recordingUrl} download={`kbs-demo-${Date.now()}.${recordingExtension}`}>
+                  <Download size={13} />
+                  다운로드
+                </a>
+              ) : (
+                <button type="button" disabled>
+                  <Download size={13} />
+                  다운로드
+                </button>
+              )}
+            </div>
+            {recordingError && <small className="recording-error">{recordingError}</small>}
+          </aside>
+        )}
+
+        {overlayVisibility.legend && (
+          <div className="legend" aria-label="범례">
+            <div className="legend-labels">
+              {legendTicks.map((tick, index) => (
+                <span
+                  key={`${tick.position}-${tick.label}`}
+                  style={{
+                    left: `${tick.position}%`,
+                    transform:
+                      index === 0
+                        ? 'translateX(0)'
+                        : index === legendTicks.length - 1
+                          ? 'translateX(-100%)'
+                          : 'translateX(-50%)',
+                  }}
+                >
+                  {tick.label}
+                </span>
+              ))}
+            </div>
+            <div
+              className="legend-ramp"
+              style={{ gridTemplateColumns: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }}
+            >
+              {activeScenario.palette.map(([stop, color]) => (
+                <i key={stop} style={{ backgroundColor: color }} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {overlayVisibility.panelToggle && !shortcutChromeHidden && (
+          <button
+            type="button"
+            className="panel-toggle"
+            onClick={() => setShowControls((value) => !value)}
+            title="운영 패널"
+          >
+            <PanelsTopLeft size={16} />
+          </button>
+        )}
+
+        {showControls && (
+          <>
+            {overlayVisibility.timeline && timeline.length > 1 && (
+              <div className="timebar-panel" aria-label="기상 정보 시간 선택">
+                {(() => {
+                  const valRange = activeScenario.maxValue - activeScenario.minValue;
+                  const selectedStation = activeScenario.points.find((p) => p.id === selectedStationId) || activeScenario.points[0];
+                  const linePath = selectedTrendData
+                    .map((item, idx) => {
+                      const x = 10 + (idx / (timeline.length - 1)) * 480;
+                      const y = 35 - (valRange > 0 ? (item.value - activeScenario.minValue) / valRange : 0.5) * 30;
+                      return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                    })
+                    .join(' ');
+                  const areaPath = linePath ? `${linePath} L 490 38 L 10 38 Z` : '';
+                  const activeX = 10 + (activeFrameIndex / (timeline.length - 1)) * 480;
+                  const activeValColor = rgbaToCss(valueToSteppedColor(selectedStation?.value ?? activeScenario.minValue, activeScenario.palette, 255));
+
+                  return (
+                    <>
+                      <div className="timebar-chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 10px', marginBottom: '2px' }}>
+                        <span className="selected-station-badge" style={{ 
+                          fontSize: '10px', 
+                          fontWeight: 900, 
+                          color: '#ffffff', 
+                          backgroundColor: activeValColor, 
+                          padding: '1px 6px', 
+                          borderRadius: '3px',
+                          border: `1px solid ${activeValColor}`,
+                          boxShadow: '0 0 8px rgba(0,0,0,0.5)',
+                          textShadow: '0 1px 2px rgba(0,0,0,0.8)'
+                        }}>
+                          {selectedStation?.names?.[lang] || selectedStation?.name || (lang === 'vi' ? 'Trạm' : lang === 'en' ? 'Station' : '지점')} {translations[lang]['trendTitle'] || '실시간 추이'}
+                        </span>
+                      </div>
+                      <svg className="trend-chart-svg" viewBox="0 0 500 42">
+                        <defs>
+                          <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={activeValColor} stopOpacity="0.4" />
+                            <stop offset="100%" stopColor="rgba(0,0,0,0)" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        {areaPath && <path d={areaPath} fill="url(#chart-area-grad)" />}
+                        {linePath && <path d={linePath} fill="none" stroke={activeValColor} strokeWidth="2" />}
+                        {selectedTrendData.map((item, idx) => {
+                          const x = 10 + (idx / (timeline.length - 1)) * 480;
+                          const y = 35 - (valRange > 0 ? (item.value - activeScenario.minValue) / valRange : 0.5) * 30;
+                          const isActive = idx === activeFrameIndex;
+                          return (
+                            <g key={idx}>
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r={isActive ? 3.5 : 2}
+                                fill={isActive ? '#ffffff' : rgbaToCss(valueToSteppedColor(item.value, activeScenario.palette, 255))}
+                                stroke="#111820"
+                                strokeWidth={isActive ? 1.5 : 0.5}
+                              />
+                              <text
+                                x={x}
+                                y={y - 6}
+                                textAnchor="middle"
+                                fontSize="8.5"
+                                fontWeight="900"
+                                fill="#ffffff"
+                                stroke="#0a121e"
+                                strokeWidth="1.8"
+                                paintOrder="stroke"
+                              >
+                                {item.value}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        <line x1={activeX} y1="0" x2={activeX} y2="40" stroke="rgba(255,255,255,0.3)" strokeDasharray="2,2" strokeWidth="1" />
+                      </svg>
+                    </>
+                  );
+                })()}
+                <div className="timebar-controls-row">
+                  <button
+                    type="button"
+                    className="timeline-play"
+                    disabled={timeline.length <= 1}
+                    onClick={() => setIsTimelinePlaying((value) => !value)}
+                    title={isTimelinePlaying ? (translations[lang]['timelinePause'] || '타임라인 정지') : (translations[lang]['timelinePlay'] || '타임라인 재생')}
+                  >
+                    {isTimelinePlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+                  </button>
+                  <div className="timeline-meta">
+                    <strong>{translateLiveText(activeFrame?.label ?? '샘플', lang)}</strong>
+                    <span>{translateLiveText(activeFrame?.updatedAt ?? activeScenario.updatedAt, lang)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(timeline.length - 1, 0)}
+                    value={activeFrameIndex}
+                    disabled={timeline.length <= 1}
+                    onChange={(event) => {
+                      setFrameIndex(Number(event.target.value))
+                      setColumnReveal(1)
+                      setIsTimelinePlaying(false)
+                    }}
+                  />
+                  <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>
+                </div>
+              </div>
+            )}
+
+            {overlayVisibility.timeline && scenario.id === 'rain' && (
+              <form
+                className="rain-range-panel"
+                aria-label={translations[lang]['rainHours'] || '누적강수량 기간 선택'}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  applyRainRange()
+                }}
+              >
+                <label>
+                  <span>{translations[lang]['rainStart'] || '시작'}</span>
+                  <input
+                    type="datetime-local"
+                    value={rainRangeDraft.start}
+                    onChange={(event) => setRainRangeDraft((value) => ({ ...value, start: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>{translations[lang]['rainEnd'] || '마감'}</span>
+                  <input
+                    type="datetime-local"
+                    value={rainRangeDraft.end}
+                    onChange={(event) => setRainRangeDraft((value) => ({ ...value, end: event.target.value }))}
+                  />
+                </label>
+                <div className="range-total">
+                  <strong>{rainRangeHours > 0 ? rainRangeHours : '-'}</strong>
+                  <span>{translations[lang]['rainHours'] || '시간 누적'}</span>
+                </div>
+                <button type="submit" disabled={rainRangeHours <= 0}>
+                  {translations[lang]['rainApply'] || '적용'}
+                </button>
+              </form>
+            )}
+
+            {showEditor && (
+              <form className="text-editor" aria-label="방송 문구 수정" onSubmit={(event) => event.preventDefault()}>
+                <label>
+                  <span>분류</span>
+                  <input
+                    value={scriptText.title}
+                    onChange={(event) => updateScriptText('title', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>제목</span>
+                  <input
+                    value={scriptText.headline}
+                    onChange={(event) => updateScriptText('headline', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>보조문구</span>
+                  <input
+                    value={scriptText.subtitle}
+                    onChange={(event) => updateScriptText('subtitle', event.target.value)}
+                  />
+                </label>
+              </form>
+            )}
+
+            {overlayVisibility.controls && !shortcutChromeHidden && (
+            <nav className="control-dock" aria-label="시연 컨트롤">
+              <button
+                type="button"
+                className={`play-button ${cameraPanelOpen ? 'active' : ''}`}
+                onClick={() => setCameraPanelOpen((value) => !value)}
+              >
+                <Play size={14} fill="currentColor" />
+                <span>{translations[lang]['demo'] || '시연'}</span>
+              </button>
+              <button type="button" className="edit-button" onClick={() => setShowEditor((value) => !value)}>
+                <PencilLine size={14} />
+                <span>{translations[lang]['texts'] || '문구'}</span>
+              </button>
+              <button type="button" className="edit-button" onClick={() => setShowSettings(true)}>
+                <Settings size={14} />
+                <span>{translations[lang]['settings'] || '설정'}</span>
+              </button>
+              <button
+                type="button"
+                className={`edit-button ${is3DMode ? 'active' : ''}`}
+                onClick={() => setIs3DMode((value) => !value)}
+                title="2D / 3D 입체 지도 전환"
+              >
+                <Layers size={14} />
+                <span>{is3DMode ? (translations[lang]['view3d'] || '3D 뷰') : (translations[lang]['view2d'] || '2D 뷰')}</span>
+              </button>
+              <div className="dock-divider" />
+              <div className="region-tabs">
+                {regionLayers.map((item) => (
+                  <button
+                    type="button"
+                    className={item.id === regionLayer ? 'active' : ''}
+                    key={item.id}
+                    onClick={() => setRegionLayer(item.id)}
+                  >
+                    <MapPin size={14} />
+                    <span>{translations[lang][item.id] || item.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="dock-divider" />
+              <div className="map-style-tabs">
+                {mapThemes.map((item) => {
+                  const Icon = mapThemeIcon[item.id]
+                  const transKey = 'style' + item.id.charAt(0).toUpperCase() + item.id.slice(1)
+
+                  return (
+                    <button
+                      type="button"
+                      className={item.id === mapTheme ? 'active' : ''}
+                      key={item.id}
+                      onClick={() => setMapTheme(item.id)}
+                      title={item.label}
+                    >
+                      <Icon size={14} />
+                      <span>{translations[lang][transKey] || item.shortLabel}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </nav>
+            )}
+          </>
+        )}
+
+        {showSettings && (
+          <div className="settings-backdrop" role="presentation" onMouseDown={() => setShowSettings(false)}>
+            <section
+              className="settings-modal"
+              aria-label={translations[lang]['settings_title'] || '화면 표시 설정'}
+              role="dialog"
+              aria-modal="true"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header>
+                <div>
+                  <Settings size={17} />
+                  <strong>{translations[lang]['settings_title'] || '화면 표시 설정'}</strong>
+                </div>
+                <button type="button" onClick={() => setShowSettings(false)} title={translations[lang]['settings_close'] || '닫기'}>
+                  <X size={16} />
+                </button>
+              </header>
+              <div className="settings-list">
+                {overlayOptions.map((item) => (
+                  <label key={item.key}>
+                    <span>{translations[lang]['opt_' + item.key] || item.label}</span>
+                    <input
+                      type="checkbox"
+                      checked={overlayVisibility[item.key]}
+                      onChange={() => toggleOverlay(item.key)}
+                    />
+                  </label>
+                ))}
+              </div>
+              <button type="button" className="settings-reset" onClick={() => setOverlayVisibility(defaultOverlayVisibility)}>
+                {translations[lang]['settings_reset'] || '전체 표시'}
+              </button>
+            </section>
+          </div>
+        )}
+      </section>
+    </main>
+  )
+}
+
+export default App
