@@ -963,20 +963,48 @@
   display: none !important;
 }
 
-.scenario-rain {
-  --accent-color: #111820;
+.scenario-temperature {
+  --accent-color: #ff5e3a;
 }
 
-.scenario-temperature {
-  --accent-color: #111820;
+.scenario-humidity {
+  --accent-color: #1a75ff;
+}
+
+.scenario-wind {
+  --accent-color: #00cc88;
+}
+
+.scenario-rain {
+  --accent-color: #00a3e0;
+}
+
+.scenario-forecast_temp {
+  --accent-color: #ff7a00;
+}
+
+.scenario-forecast_rain {
+  --accent-color: #0080ff;
 }
 
 .scenario-heat {
-  --accent-color: #111820;
+  --accent-color: #e60000;
 }
 
 .scenario-wildfire {
-  --accent-color: #111820;
+  --accent-color: #ff5722;
+}
+
+.scenario-uv {
+  --accent-color: #9c27b0;
+}
+
+.scenario-aqi {
+  --accent-color: #10ac84;
+}
+
+.scenario-future_danger {
+  --accent-color: #ff9800;
 }
 
 .map-admin {

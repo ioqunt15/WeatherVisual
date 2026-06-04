@@ -1100,6 +1100,16 @@ function App() {
   )
   const legendTicks = useMemo(() => createLegendTicks(activeScenario), [activeScenario])
 
+  useEffect(() => {
+    console.log('[DEBUG-MAP-STATE]', {
+      mapExists: !!mapRef.current,
+      mapStyleLoaded,
+      hasGeoJson: !!vietnamGeoJson,
+      layersInitialized: mapLayersInitialized
+    })
+  }, [mapStyleLoaded, vietnamGeoJson, mapLayersInitialized])
+
+
   const gridCells = useMemo(() => {
     let cells: GridCell[] = []
     if (activeFrame?.gridPoints?.length) {
@@ -1714,6 +1724,7 @@ function App() {
   // vietnamGeoJson이 null이면 buildVietnamGrid가 [] 반환 → 차트 데이터 없음→ 대기 후 실행
   useEffect(() => {
     const map = mapRef.current
+    console.log('[DEBUG-INITMAPLAYERS] useEffect triggered. mapExists:', !!map, 'mapStyleLoaded:', mapStyleLoaded, 'hasGeoJson:', !!vietnamGeoJson)
     if (!map || !mapStyleLoaded || !vietnamGeoJson) {
       return
     }
@@ -1723,7 +1734,9 @@ function App() {
 
     setMapLayersInitialized(false)
     const initMapLayers = async () => {
+      console.log('[DEBUG-INITMAPLAYERS] Inside initMapLayers async function')
       if (cancelled) return
+
 
       // SVG 이미지 사전 로딩 (실패해도 레이어 등록은 계속 진행)
       try {
@@ -1880,13 +1893,8 @@ function App() {
       }
     }
 
-    if (map.isStyleLoaded()) {
-      void initMapLayers()
-    } else {
-      map.once('style.load', () => {
-        void initMapLayers()
-      })
-    }
+    console.log('[DEBUG-INITMAPLAYERS] Running initMapLayers() immediately (mapStyleLoaded is true)')
+    void initMapLayers()
 
     return () => {
       cancelled = true
