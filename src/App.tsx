@@ -359,79 +359,7 @@ function getColumnElevationValue(cell: GridCell, scenario: DisasterScenario) {
   return getLinearElevationValue(cell.value, scenario)
 }
 
-const HOANGSA_POLYGON: [number, number][] = [
-  [111.0, 16.3],
-  [112.5, 17.1],
-  [113.3, 17.0],
-  [113.1, 16.1],
-  [111.8, 15.5],
-  [111.0, 16.3]
-]
 
-const TRUONGSA_POLYGON: [number, number][] = [
-  [111.2, 8.5],
-  [113.8, 11.6],
-  [115.3, 11.5],
-  [115.1, 9.8],
-  [112.8, 8.3],
-  [111.2, 8.5]
-]
-
-function isPointInPolygon(lon: number, lat: number, polygon: [number, number][]) {
-  let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i++) {
-    const xi = polygon[i][0], yi = polygon[i][1]
-    const xj = polygon[j][0], yj = polygon[j][1]
-    const intersects = (yi > lat) !== (yj > lat) && (lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
-    if (intersects) inside = !inside
-  }
-  return inside
-}
-
-function generateIslandGridCells(scenarioId: string, scenario: DisasterScenario): GridCell[] {
-  const cells: GridCell[] = []
-  
-  const hoangsaPt = scenario.points.find((p) => p.id === 'hoangsa')
-  const truongsaPt = scenario.points.find((p) => p.id === 'truongsa')
-
-  // 1. 황사제도 촘촘한 격자 생성 (0.20도 간격)
-  if (hoangsaPt) {
-    const step = 0.20
-    let idCounter = 1
-    for (let lon = 111.0; lon <= 114.2; lon += step) {
-      for (let lat = 15.5; lat <= 17.2; lat += step) {
-        if (isPointInPolygon(lon, lat, HOANGSA_POLYGON)) {
-          cells.push({
-            id: `${scenarioId}-hoangsa-grid-${idCounter++}`,
-            lon,
-            lat,
-            value: hoangsaPt.value
-          })
-        }
-      }
-    }
-  }
-
-  // 2. 쯔엉사제도 촘촘한 격자 생성 (0.28도 간격)
-  if (truongsaPt) {
-    const step = 0.28
-    let idCounter = 1
-    for (let lon = 111.0; lon <= 115.5; lon += step) {
-      for (let lat = 8.3; lat <= 11.6; lat += step) {
-        if (isPointInPolygon(lon, lat, TRUONGSA_POLYGON)) {
-          cells.push({
-            id: `${scenarioId}-truongsa-grid-${idCounter++}`,
-            lon,
-            lat,
-            value: truongsaPt.value
-          })
-        }
-      }
-    }
-  }
-
-  return cells
-}
 
 function buildGridGeoJson(cells: GridCell[], cellSizeMeters: number) {
   const R = cellSizeMeters * 0.38
@@ -1183,8 +1111,26 @@ function App() {
       cells = buildVietnamGrid(activeScenario, vietnamGeoJson)
     }
 
-    const islandCells = generateIslandGridCells(activeScenario.id, activeScenario)
-    cells.push(...islandCells)
+    // 황사/쯔엉사 군도: 각 대표 지점에 단일 격자 기둥 1개씩만 추가
+    const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
+    const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
+
+    if (hoangsaPt && !cells.some((c) => c.id.endsWith('hoangsa'))) {
+      cells.push({
+        id: `${activeScenario.id}-hoangsa`,
+        lon: hoangsaPt.lon,
+        lat: hoangsaPt.lat,
+        value: hoangsaPt.value,
+      })
+    }
+    if (truongsaPt && !cells.some((c) => c.id.endsWith('truongsa'))) {
+      cells.push({
+        id: `${activeScenario.id}-truongsa`,
+        lon: truongsaPt.lon,
+        lat: truongsaPt.lat,
+        value: truongsaPt.value,
+      })
+    }
 
     return cells
   }, [activeFrame, activeScenario, vietnamGeoJson])
