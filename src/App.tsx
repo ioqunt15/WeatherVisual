@@ -645,15 +645,63 @@ function estimateTextWidth(value: string, size: number) {
 }
 
 
-function createCalloutIcon(point: DisasterPoint, lang: Language) {
+function createCalloutIcon(point: DisasterPoint, scenario: DisasterScenario, lang: Language) {
   const value = formatPointValue(point.value)
   const displayName = point.names?.[lang] || point.name
   const nameFontSize = lang === 'vi' ? 9.5 : 10.5
+
+  const hasArrow = point.direction !== undefined
+  const directionAngle = hasArrow ? point.direction : 0
+
+  if (scenario.id === 'wind' || scenario.id === 'forecast_wind' || scenario.id === 'gust' || scenario.id === 'typhoon') {
+    const speedColor = rgbaToCss(valueToSteppedColor(point.value, scenario.palette, 255))
+    const arrowColor = speedColor
+    
+    const arrowSvg = hasArrow ? `
+    <g transform="translate(30, 40) rotate(${directionAngle})">
+      <path d="M0 -21 L5 -10 L1.5 -11.5 L1.5 17 L-1.5 17 L-1.5 -11.5 L-5 -10 Z" fill="${arrowColor}" stroke="#ffffff" stroke-width="1.0" stroke-linejoin="round"/>
+    </g>
+    ` : ''
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="70" viewBox="0 0 60 70">
+    <defs>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.4"/>
+      </filter>
+    </defs>
+    <!-- Connector Stems -->
+    <line x1="30" y1="17" x2="30" y2="27" stroke="#ffffff" stroke-width="1" opacity="0.5"/>
+    <line x1="30" y1="53" x2="30" y2="68" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="2 2" opacity="0.8"/>
+    <!-- Pin Dot -->
+    <circle cx="30" cy="68" r="2" fill="#ffffff" stroke="#0b131e" stroke-width="1"/>
+    <!-- Station Name Banner -->
+    <g filter="url(#shadow)">
+      <rect x="2" y="2" width="56" height="15" rx="3" fill="#0b131e" fill-opacity="0.88" stroke="#ffffff" stroke-width="0.5"/>
+      <text x="30" y="12.5" text-anchor="middle" font-family="Noto Sans KR, sans-serif" font-size="8.5" font-weight="800" fill="#ffffff">${escapeSvgText(displayName)}</text>
+    </g>
+    <!-- Wind Dial Outer Circle & Arrow -->
+    <g filter="url(#shadow)">
+      ${arrowSvg}
+      <!-- Inner Dial Circle -->
+      <circle cx="30" cy="40" r="13" fill="#0b131e" fill-opacity="0.95" stroke="${speedColor}" stroke-width="2.5" />
+      <!-- Wind Speed Text -->
+      <text x="30" y="44" text-anchor="middle" font-family="Noto Sans KR, sans-serif" font-size="11.5" font-weight="900" fill="#ffffff">${escapeSvgText(value)}</text>
+    </g>
+  </svg>`
+
+    const iconId = hasArrow ? `${point.id}-${point.value}-${point.direction}` : `${point.id}-${point.value}`
+
+    return {
+      iconId,
+      iconUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+      iconWidth: 60,
+      iconHeight: 70,
+    }
+  }
+
   const nameWidth = estimateTextWidth(displayName, nameFontSize)
   const valueWidth = estimateTextWidth(value, 13)
   const maxWidth = lang === 'vi' ? 160 : 200
-
-  const hasArrow = point.direction !== undefined
   const arrowWidth = hasArrow ? 16 : 0
   const iconWidth = Math.ceil(Math.max(80, Math.min(maxWidth, nameWidth + valueWidth + 28 + arrowWidth)))
   const iconHeight = 30
@@ -1371,6 +1419,26 @@ function App() {
     }),
     [activeFrame, scenario],
   )
+  const typhoonData = useMemo(() => {
+    const dateStr = activeFrame?.updatedAt || activeScenario.updatedAt
+    const cleanedDateStr = dateStr.replace(/\./g, '-').replace(' ', 'T')
+    const date = new Date(cleanedDateStr + '+07:00')
+    const epochHour = isNaN(date.getTime()) ? 494500 : Math.floor(date.getTime() / 3600000)
+    
+    const pathData = getTyphoonPathData(epochHour)
+    
+    const cycle = epochHour % 48
+    const wind = Math.round((45 + Math.sin(cycle * 0.15) * 8) * 10) / 10
+    const pressure = Math.round(960 - Math.sin(cycle * 0.15) * 15)
+    
+    return {
+      lat: pathData.currentCenter[1],
+      lon: pathData.currentCenter[0],
+      wind,
+      pressure,
+      pathData
+    }
+  }, [activeFrame, activeScenario])
   const legendTicks = useMemo(() => createLegendTicks(activeScenario), [activeScenario])
 
   useEffect(() => {
@@ -1385,9 +1453,14 @@ function App() {
 
   const gridCells = useMemo(() => {
     let cells: GridCell[] = []
-    if (activeFrame?.gridPoints?.length) {
+    if (activeScenario.id === 'sst' || activeScenario.id === 'wave') {
+      cells = []
+    } else if (activeFrame?.gridPoints?.length) {
       cells = activeFrame.gridPoints
-        .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
+        .filter((point) => {
+          if (activeScenario.id === 'rain' && point.value <= 0) return false
+          return true
+        })
         .map((point) => ({
           id: `${activeScenario.id}-${point.id}`,
           lon: point.lon,
@@ -1445,7 +1518,12 @@ function App() {
           : activeScenario.points
 
       return [...points]
-        .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
+        .filter((point) => {
+          if (activeScenario.id === 'rain' && point.value <= 0) return false
+          if (activeScenario.id === 'sst' && point.value <= 0) return false
+          if (activeScenario.id === 'wave' && point.value <= 0) return false
+          return true
+        })
         .sort((a, b) => b.value - a.value)
         .slice(0, 5)
     },
@@ -1466,7 +1544,12 @@ function App() {
   const calloutPoints = useMemo<CalloutPoint[]>(
     () =>
       [...activeScenario.points]
-        .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
+        .filter((point) => {
+          if (activeScenario.id === 'rain' && point.value <= 0) return false
+          if (activeScenario.id === 'sst' && point.value <= 0) return false
+          if (activeScenario.id === 'wave' && point.value <= 0) return false
+          return true
+        })
         .sort((a, b) => b.lat - a.lat)
         .map((point, index) => {
           const layout = CALLOUT_LAYOUTS[point.id] ?? {
@@ -1478,7 +1561,7 @@ function App() {
             ...point,
             z: 0,
             offset: [layout.nudgeX, 0],
-            ...createCalloutIcon(point, lang),
+            ...createCalloutIcon(point, activeScenario, lang),
           }
         }),
     [activeScenario, lang],
@@ -1645,12 +1728,7 @@ function App() {
       }
     }
 
-    const dateStr = activeFrame?.updatedAt || activeScenario.updatedAt
-    const date = new Date(dateStr.replace(/\./g, '-').replace(' ', 'T') + '+07:00')
-    const epochHour = isNaN(date.getTime()) ? 494500 : Math.floor(date.getTime() / 3600000)
-
-    const data = getTyphoonPathData(epochHour)
-
+    const data = typhoonData.pathData
     const features: any[] = []
 
     // 1. History Line String (past path)
@@ -1696,6 +1774,8 @@ function App() {
       },
       properties: {
         type: 'eye-point',
+        name: lang === 'ko' ? '태풍 야기' : lang === 'vi' ? 'Bão YAGI' : 'Typhoon YAGI',
+        details: `${typhoonData.wind} m/s | ${typhoonData.pressure} hPa`,
       },
     })
 
@@ -1703,7 +1783,7 @@ function App() {
       type: 'FeatureCollection',
       features,
     }
-  }, [scenarioId, activeFrame, activeScenario, regionLayer])
+  }, [scenarioId, typhoonData, regionLayer, lang])
 
   const calloutPinsGeoJson = useMemo(() => {
     const points = (overlayVisibility.callouts && regionLayer === 'stations') ? calloutPoints : []
@@ -1992,7 +2072,10 @@ function App() {
     if (!map || !mapStyleLoaded || !mapLayersInitialized) return
 
     const isStations = regionLayer === 'stations'
+    const isWindScenario = ['wind', 'forecast_wind', 'gust', 'typhoon'].includes(scenarioId)
     const calloutVis = (overlayVisibility.callouts && isStations) ? 'visible' : 'none'
+    const pinsVis = (overlayVisibility.callouts && isStations && !isWindScenario) ? 'visible' : 'none'
+    
     try {
       // 측정지점 격자 기둥: stations 모드에서만 표출
       if (map.getLayer('kma-grid-columns-native')) {
@@ -2004,7 +2087,7 @@ function App() {
       }
       // 측정지점 핀/말풍선: stations 모드 + callouts 활성화 시만 표출
       if (map.getLayer('callout-pins-native')) {
-        map.setLayoutProperty('callout-pins-native', 'visibility', calloutVis)
+        map.setLayoutProperty('callout-pins-native', 'visibility', pinsVis)
       }
       if (map.getLayer('callout-labels-native')) {
         map.setLayoutProperty('callout-labels-native', 'visibility', calloutVis)
@@ -2012,7 +2095,7 @@ function App() {
     } catch (e) {
       console.warn('Failed to update visibility for map layers:', e)
     }
-  }, [regionLayer, overlayVisibility.callouts, mapStyleLoaded, mapLayersInitialized])
+  }, [regionLayer, overlayVisibility.callouts, mapStyleLoaded, mapLayersInitialized, scenarioId])
 
   // 지도 핀/배너 클릭 리스너 및 마우스 오버 커서 변경 처리
   useEffect(() => {
@@ -2303,6 +2386,30 @@ function App() {
           })
         }
 
+        // 1-12. 태풍 이름 라벨 레이어 (symbol)
+        if (!map.getLayer('typhoon-eye-label')) {
+          map.addLayer({
+            id: 'typhoon-eye-label',
+            type: 'symbol',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'eye-point'],
+            layout: {
+              'visibility': scenarioId === 'typhoon' ? 'visible' : 'none',
+              'text-field': ['concat', ['get', 'name'], '\n', ['get', 'details']],
+              'text-size': 11.5,
+              'text-offset': [0, 2.0],
+              'text-anchor': 'top',
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            },
+            paint: {
+              'text-color': '#ffffff',
+              'text-halo-color': '#07111b',
+              'text-halo-width': 2.0,
+            },
+          })
+        }
+
         // [CRITICAL FIX] 레이어 등록 직후 최신 GeoJSON 데이터 연속 재주입 (setData 중복 호출이지만 유일한 확실한 방법)
         const gridSourceFinal = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
         if (gridSourceFinal) gridSourceFinal.setData(gridGeoJson as any)
@@ -2373,7 +2480,8 @@ function App() {
         'typhoon-cones-outline',
         'typhoon-history-line',
         'typhoon-forecast-line',
-        'typhoon-eye-circle'
+        'typhoon-eye-circle',
+        'typhoon-eye-label'
       ]
       for (const layerId of typhoonLayers) {
         if (map.getLayer(layerId)) {
@@ -3061,41 +3169,84 @@ function App() {
         )}
 
         {overlayVisibility.rank && !shortcutChromeHidden && (
-          <aside className="rank-panel" aria-label={translations[lang]['rank'] || '주요 지점'}>
-            <div className="panel-heading">
-              <BarChart3 size={15} />
-              <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
-            </div>
-            {topPoints.map((point, index) => {
-              const valueColor = rgbaToCss(valueToSteppedColor(point.value, activeScenario.palette, 255));
-              const valueRange = activeScenario.maxValue - activeScenario.minValue;
-              const percent = valueRange > 0 ? ((point.value - activeScenario.minValue) / valueRange) * 100 : 50;
-              const clPercent = Math.max(2, Math.min(100, percent));
-
-              const isActive = selectedStationId === point.id;
-
-              return (
-                <div 
-                  className={`rank-row-container ${isActive ? 'active' : ''}`} 
-                  key={point.id}
-                  onClick={() => setSelectedStationId(point.id)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="rank-row">
-                    <span>{String(index + 1).padStart(2, '0')}</span>
-                    <b>{point.names?.[lang] || point.name}</b>
-                    <strong style={{ color: valueColor }}>
-                      {point.value}
-                      <small>{activeScenario.unit}</small>
-                    </strong>
+          activeScenario.id === 'typhoon' ? (
+            <aside className="typhoon-board-panel" aria-label={lang === 'ko' ? '태풍 정보 보드' : lang === 'vi' ? 'Thông tin bão' : 'Typhoon Status Board'}>
+              <div className="panel-heading">
+                <RotateCw size={15} className="spin-icon" style={{ animation: 'spin 4s linear infinite' }} />
+                <span>{lang === 'ko' ? '태풍 실황 정보' : lang === 'vi' ? 'THÔNG TIN BÃO LIVE' : 'LIVE TYPHOON BOARD'}</span>
+              </div>
+              <div className="typhoon-board-body">
+                <div className="typhoon-name-row">
+                  <h3>{lang === 'ko' ? '태풍 11호 "야기" (YAGI)' : lang === 'vi' ? 'Bão số 11 (YAGI)' : 'Typhoon YAGI (Class 3)'}</h3>
+                  <span className="danger-badge">{lang === 'ko' ? '매우 강' : lang === 'vi' ? 'Rất Mạnh' : 'Very Strong'}</span>
+                </div>
+                <div className="typhoon-stats-grid">
+                  <div className="typhoon-stat-item">
+                    <span className="stat-label">{lang === 'ko' ? '현재 위치' : lang === 'vi' ? 'Vị trí hiện tại' : 'Position'}</span>
+                    <span className="stat-value">{typhoonData.lat.toFixed(1)}°N, {typhoonData.lon.toFixed(1)}°E</span>
                   </div>
-                  <div className="rank-bar-bg">
-                    <div className="rank-bar-fill" style={{ width: `${clPercent}%`, backgroundColor: valueColor }} />
+                  <div className="typhoon-stat-item">
+                    <span className="stat-label">{lang === 'ko' ? '중심 기압' : lang === 'vi' ? 'Khí áp trung tâm' : 'Min Pressure'}</span>
+                    <span className="stat-value">{typhoonData.pressure} hPa</span>
+                  </div>
+                  <div className="typhoon-stat-item">
+                    <span className="stat-label">{lang === 'ko' ? '최대 풍속' : lang === 'vi' ? 'Gió mạnh nhất' : 'Max Wind Speed'}</span>
+                    <span className="stat-value">{typhoonData.wind} m/s ({Math.round(typhoonData.wind * 3.6)} km/h)</span>
+                  </div>
+                  <div className="typhoon-stat-item">
+                    <span className="stat-label">{lang === 'ko' ? '이동 속도' : lang === 'vi' ? 'Tốc độ di chuyển' : 'Movement'}</span>
+                    <span className="stat-value">{lang === 'ko' ? '서북서 15 km/h' : lang === 'vi' ? 'Tây Tây Bắc 15 km/h' : 'WNW 15 km/h'}</span>
                   </div>
                 </div>
-              );
-            })}
-          </aside>
+                <div className="typhoon-warning-box">
+                  <strong>{lang === 'ko' ? '특보 상황 및 영향권:' : lang === 'vi' ? 'Cảnh báo & Ảnh hưởng:' : 'Warnings & Impacts:'}</strong>
+                  <p style={{ margin: '5px 0 0', fontSize: '11px', lineHeight: '1.4', color: 'rgba(244,248,255,0.85)' }}>
+                    {lang === 'ko'
+                      ? '황사 군도 및 베트남 중북부 연안 해상 풍랑 및 침수 위험 극심. 항해 금지 및 사전 대피 요망.'
+                      : lang === 'vi'
+                      ? 'Nguy cơ nước dâng, sóng lớn tại Quần đảo Hoàng Sa và vùng biển ven bờ miền Trung. Nghiêm cấm tàu thuyền ra khơi.'
+                      : 'High risk of storm surge and heavy waves around Paracel Islands and North-Central coast. Sailing prohibited.'}
+                  </p>
+                </div>
+              </div>
+            </aside>
+          ) : (
+            <aside className="rank-panel" aria-label={translations[lang]['rank'] || '주요 지점'}>
+              <div className="panel-heading">
+                <BarChart3 size={15} />
+                <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
+              </div>
+              {topPoints.map((point, index) => {
+                const valueColor = rgbaToCss(valueToSteppedColor(point.value, activeScenario.palette, 255));
+                const valueRange = activeScenario.maxValue - activeScenario.minValue;
+                const percent = valueRange > 0 ? ((point.value - activeScenario.minValue) / valueRange) * 100 : 50;
+                const clPercent = Math.max(2, Math.min(100, percent));
+
+                const isActive = selectedStationId === point.id;
+
+                return (
+                  <div 
+                    className={`rank-row-container ${isActive ? 'active' : ''}`} 
+                    key={point.id}
+                    onClick={() => setSelectedStationId(point.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="rank-row">
+                      <span>{String(index + 1).padStart(2, '0')}</span>
+                      <b>{point.names?.[lang] || point.name}</b>
+                      <strong style={{ color: valueColor }}>
+                        {point.value}
+                        <small>{activeScenario.unit}</small>
+                      </strong>
+                    </div>
+                    <div className="rank-bar-bg">
+                      <div className="rank-bar-fill" style={{ width: `${clPercent}%`, backgroundColor: valueColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </aside>
+          )
         )}
 
         {showControls && cameraPanelOpen && overlayVisibility.cameraPanel && !shortcutChromeHidden && (

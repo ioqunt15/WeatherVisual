@@ -93,7 +93,7 @@ function estimateValue(lon: number, lat: number, points: DisasterPoint[], maxVal
 }
 
 export function buildVietnamGrid(scenario: DisasterScenario, geoJson: VietnamGeoJson | null): GridCell[] {
-  if (!geoJson) {
+  if (!geoJson || scenario.id === 'sst' || scenario.id === 'wave') {
     return []
   }
 
