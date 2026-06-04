@@ -558,9 +558,13 @@ function estimateTextWidth(value: string, size: number) {
 function createCalloutIcon(point: DisasterPoint, lang: Language) {
   const value = formatPointValue(point.value)
   const displayName = point.names?.[lang] || point.name
-  const nameWidth = estimateTextWidth(displayName, 10.5)
+  // 베트남어는 성조 포함 장문이라 더 작은 폰트로 추정
+  const nameFontSize = lang === 'vi' ? 9.5 : 10.5
+  const nameWidth = estimateTextWidth(displayName, nameFontSize)
   const valueWidth = estimateTextWidth(value, 13)
-  const iconWidth = Math.ceil(Math.max(88, Math.min(220, nameWidth + valueWidth + 34)))
+  // 베트남어 기준 최대 너비를 160으로 제한 (기존 220)
+  const maxWidth = lang === 'vi' ? 160 : 200
+  const iconWidth = Math.ceil(Math.max(80, Math.min(maxWidth, nameWidth + valueWidth + 28)))
   const iconHeight = 30
   const cardHeight = 19
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${iconWidth}" height="${iconHeight}" viewBox="0 0 ${iconWidth} ${iconHeight}">
@@ -573,7 +577,7 @@ function createCalloutIcon(point: DisasterPoint, lang: Language) {
   <rect x="3" y="2" width="3.5" height="${cardHeight}" fill="#111820"/>
   <path d="M${iconWidth / 2} ${cardHeight + 1} L${iconWidth / 2} 25" stroke="#111820" stroke-width="1.2" stroke-linecap="round"/>
   <circle cx="${iconWidth / 2}" cy="26" r="2.5" fill="#f8fbff" stroke="#111820" stroke-width="1.5"/>
-  <text x="12" y="16" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="10.5" font-weight="900" fill="#1f2933">${escapeSvgText(displayName)}</text>
+  <text x="10" y="15.5" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="${nameFontSize}" font-weight="700" fill="#1f2933">${escapeSvgText(displayName)}</text>
   <text x="${iconWidth - 7}" y="16" text-anchor="end" font-family="Noto Sans KR, Noto Sans CJK KR, sans-serif" font-size="13" font-weight="900" fill="#111820">${escapeSvgText(value)}</text>
 </svg>`
 
@@ -1111,29 +1115,32 @@ function App() {
       cells = buildVietnamGrid(activeScenario, vietnamGeoJson)
     }
 
-    // 황사/쯔엉사 군도: 각 대표 지점에 단일 격자 기둥 1개씩만 추가
-    const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
-    const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
+    // 황사/쯔엉사 군도: 측정지점(stations) 모드일 때만 단일 갪자 기둥 추가
+    // regions 모드에선 regionalFeaturesGeoJson에서 정사각형 컄럼으로 처리하므로 여기에선 제외
+    if (regionLayer === 'stations') {
+      const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
+      const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
 
-    if (hoangsaPt && !cells.some((c) => c.id.endsWith('hoangsa'))) {
-      cells.push({
-        id: `${activeScenario.id}-hoangsa`,
-        lon: hoangsaPt.lon,
-        lat: hoangsaPt.lat,
-        value: hoangsaPt.value,
-      })
-    }
-    if (truongsaPt && !cells.some((c) => c.id.endsWith('truongsa'))) {
-      cells.push({
-        id: `${activeScenario.id}-truongsa`,
-        lon: truongsaPt.lon,
-        lat: truongsaPt.lat,
-        value: truongsaPt.value,
-      })
+      if (hoangsaPt && !cells.some((c) => c.id.endsWith('hoangsa'))) {
+        cells.push({
+          id: `${activeScenario.id}-hoangsa`,
+          lon: hoangsaPt.lon,
+          lat: hoangsaPt.lat,
+          value: hoangsaPt.value,
+        })
+      }
+      if (truongsaPt && !cells.some((c) => c.id.endsWith('truongsa'))) {
+        cells.push({
+          id: `${activeScenario.id}-truongsa`,
+          lon: truongsaPt.lon,
+          lat: truongsaPt.lat,
+          value: truongsaPt.value,
+        })
+      }
     }
 
     return cells
-  }, [activeFrame, activeScenario, vietnamGeoJson])
+  }, [activeFrame, activeScenario, vietnamGeoJson, regionLayer])
 
   const regionalFeatures = useMemo(() => buildRegionalFeatures(vietnamGeoJson, activeScenario), [activeScenario, vietnamGeoJson])
   const visibleCellCount = regionLayer === 'regions' ? regionalFeatures.length : gridCells.length
@@ -1628,21 +1635,31 @@ function App() {
     }
   }, [selectedStationId, mapStyleLoaded])
 
-  // regionLayer 및 overlayVisibility.callouts 변경 시 측정지점 핀 및 말풍선 레이어 visibility 제어
+  // regionLayer 변경 시 차트 레이어 및 핀/말풍선 레이어 visibility 명시적 제어
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapStyleLoaded || !mapLayersInitialized) return
 
-    const visibility = (overlayVisibility.callouts && regionLayer === 'stations') ? 'visible' : 'none'
+    const isStations = regionLayer === 'stations'
+    const calloutVis = (overlayVisibility.callouts && isStations) ? 'visible' : 'none'
     try {
+      // 측정지점 격자 기둥: stations 모드에서만 표출
+      if (map.getLayer('kma-grid-columns-native')) {
+        map.setLayoutProperty('kma-grid-columns-native', 'visibility', isStations ? 'visible' : 'none')
+      }
+      // 광역지역 폴리곤: regions 모드에서만 표출
+      if (map.getLayer('regional-polygons-native')) {
+        map.setLayoutProperty('regional-polygons-native', 'visibility', isStations ? 'none' : 'visible')
+      }
+      // 측정지점 핀/말풍선: stations 모드 + callouts 활성화 시만 표출
       if (map.getLayer('callout-pins-native')) {
-        map.setLayoutProperty('callout-pins-native', 'visibility', visibility)
+        map.setLayoutProperty('callout-pins-native', 'visibility', calloutVis)
       }
       if (map.getLayer('callout-labels-native')) {
-        map.setLayoutProperty('callout-labels-native', 'visibility', visibility)
+        map.setLayoutProperty('callout-labels-native', 'visibility', calloutVis)
       }
     } catch (e) {
-      console.warn('Failed to update visibility for callout layers:', e)
+      console.warn('Failed to update visibility for map layers:', e)
     }
   }, [regionLayer, overlayVisibility.callouts, mapStyleLoaded, mapLayersInitialized])
 
@@ -1694,9 +1711,10 @@ function App() {
   }, [mapStyleLoaded])
 
   // 1. MapLibre Native 소스 및 레이어 등록 관리
+  // vietnamGeoJson이 null이면 buildVietnamGrid가 [] 반환 → 차트 데이터 없음→ 대기 후 실행
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapStyleLoaded) {
+    if (!map || !mapStyleLoaded || !vietnamGeoJson) {
       return
     }
 
@@ -1723,38 +1741,30 @@ function App() {
       if (cancelled) return
 
       try {
-        // 1-1. 소스 등록
-        if (!map.getSource('vietnam-regions-source')) {
-          map.addSource('vietnam-regions-source', {
-            type: 'geojson',
-            data: regionalFeaturesGeoJson as any,
-          })
-        }
-        if (!map.getSource('kma-grid-source')) {
-          map.addSource('kma-grid-source', {
-            type: 'geojson',
-            data: gridGeoJson as any,
-          })
-        }
-        if (!map.getSource('callout-pins-source')) {
-          map.addSource('callout-pins-source', {
-            type: 'geojson',
-            data: calloutPinsGeoJson as any,
-          })
-        }
-        if (!map.getSource('regional-labels-source')) {
-          map.addSource('regional-labels-source', {
-            type: 'geojson',
-            data: regionalLabelsGeoJson as any,
-          })
+        // 1-1. 소스 등록 - 이미 있으면 제거 후 재등록
+        const sourcesToAdd = [
+          { id: 'vietnam-regions-source', data: regionalFeaturesGeoJson },
+          { id: 'kma-grid-source', data: gridGeoJson },
+          { id: 'callout-pins-source', data: calloutPinsGeoJson },
+          { id: 'regional-labels-source', data: regionalLabelsGeoJson },
+        ]
+        for (const { id, data } of sourcesToAdd) {
+          if (map.getSource(id)) {
+            (map.getSource(id) as maplibregl.GeoJSONSource).setData(data as any)
+          } else {
+            map.addSource(id, { type: 'geojson', data: data as any })
+          }
         }
 
-        // 1-2. 3D 폴리곤 레이어 (fill-extrusion)
+        // 1-2. 3D 폴리곤 레이어 (fill-extrusion) - regions 모드에서만 표출
         if (!map.getLayer('regional-polygons-native')) {
           map.addLayer({
             id: 'regional-polygons-native',
             type: 'fill-extrusion',
             source: 'vietnam-regions-source',
+            layout: {
+              'visibility': regionLayer === 'regions' ? 'visible' : 'none',
+            },
             paint: {
               'fill-extrusion-color': ['get', 'color'],
               'fill-extrusion-color-transition': { duration: 600, delay: 0 },
@@ -1767,12 +1777,15 @@ function App() {
           })
         }
 
-        // 1-3. 격자 기둥 레이어 (fill-extrusion)
+        // 1-3. 격자 기둥 레이어 (fill-extrusion) - stations 모드에서만 표출
         if (!map.getLayer('kma-grid-columns-native')) {
           map.addLayer({
             id: 'kma-grid-columns-native',
             type: 'fill-extrusion',
             source: 'kma-grid-source',
+            layout: {
+              'visibility': regionLayer === 'stations' ? 'visible' : 'none',
+            },
             paint: {
               'fill-extrusion-color': ['get', 'color'],
               'fill-extrusion-color-transition': { duration: 600, delay: 0 },
@@ -1848,18 +1861,12 @@ function App() {
           })
         }
 
-        // [CRITICAL FIX] 레이어 등록 직후 최신 GeoJSON 데이터를 즉시 주입
-        const regionSource = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
-        if (regionSource) regionSource.setData(regionalFeaturesGeoJson as any)
+        // [CRITICAL FIX] 레이어 등록 직후 최신 GeoJSON 데이터 연속 재주입 (setData 중복 호출이지만 유일한 확실한 방법)
+        const gridSourceFinal = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
+        if (gridSourceFinal) gridSourceFinal.setData(gridGeoJson as any)
 
-        const gridSource = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
-        if (gridSource) gridSource.setData(gridGeoJson as any)
-
-        const pinsSource = map.getSource('callout-pins-source') as maplibregl.GeoJSONSource
-        if (pinsSource) pinsSource.setData(calloutPinsGeoJson as any)
-
-        const labelsSource = map.getSource('regional-labels-source') as maplibregl.GeoJSONSource
-        if (labelsSource) labelsSource.setData(regionalLabelsGeoJson as any)
+        const regionSourceFinal = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
+        if (regionSourceFinal) regionSourceFinal.setData(regionalFeaturesGeoJson as any)
 
         map.triggerRepaint()
         setMapLayersInitialized(true)
@@ -1884,7 +1891,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [mapStyleLoaded, mapTheme])
+  }, [mapStyleLoaded, mapTheme, vietnamGeoJson])
 
 
   // 2. GeoJSON 소스 데이터 동적 업데이트 및 말풍선 SVG 갱신
