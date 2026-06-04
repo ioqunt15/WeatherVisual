@@ -359,44 +359,85 @@ function getColumnElevationValue(cell: GridCell, scenario: DisasterScenario) {
   return getLinearElevationValue(cell.value, scenario)
 }
 
-const HOANGSA_POLYGON = [
-  [111.0, 17.2],
-  [114.2, 17.2],
-  [114.2, 15.6],
-  [111.0, 15.6],
-  [111.0, 17.2]
+const HOANGSA_POLYGON: [number, number][] = [
+  [111.0, 16.3],
+  [112.5, 17.1],
+  [113.3, 17.0],
+  [113.1, 16.1],
+  [111.8, 15.5],
+  [111.0, 16.3]
 ]
 
-const TRUONGSA_POLYGON = [
-  [111.0, 11.5],
-  [115.5, 11.5],
-  [115.5, 8.5],
-  [111.0, 8.5],
-  [111.0, 11.5]
+const TRUONGSA_POLYGON: [number, number][] = [
+  [111.2, 8.5],
+  [113.8, 11.6],
+  [115.3, 11.5],
+  [115.1, 9.8],
+  [112.8, 8.3],
+  [111.2, 8.5]
 ]
+
+function isPointInPolygon(lon: number, lat: number, polygon: [number, number][]) {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i++) {
+    const xi = polygon[i][0], yi = polygon[i][1]
+    const xj = polygon[j][0], yj = polygon[j][1]
+    const intersects = (yi > lat) !== (yj > lat) && (lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
+    if (intersects) inside = !inside
+  }
+  return inside
+}
+
+function generateIslandGridCells(scenarioId: string, scenario: DisasterScenario): GridCell[] {
+  const cells: GridCell[] = []
+  
+  const hoangsaPt = scenario.points.find((p) => p.id === 'hoangsa')
+  const truongsaPt = scenario.points.find((p) => p.id === 'truongsa')
+
+  // 1. 황사제도 촘촘한 격자 생성 (0.20도 간격)
+  if (hoangsaPt) {
+    const step = 0.20
+    let idCounter = 1
+    for (let lon = 111.0; lon <= 114.2; lon += step) {
+      for (let lat = 15.5; lat <= 17.2; lat += step) {
+        if (isPointInPolygon(lon, lat, HOANGSA_POLYGON)) {
+          cells.push({
+            id: `${scenarioId}-hoangsa-grid-${idCounter++}`,
+            lon,
+            lat,
+            value: hoangsaPt.value
+          })
+        }
+      }
+    }
+  }
+
+  // 2. 쯔엉사제도 촘촘한 격자 생성 (0.28도 간격)
+  if (truongsaPt) {
+    const step = 0.28
+    let idCounter = 1
+    for (let lon = 111.0; lon <= 115.5; lon += step) {
+      for (let lat = 8.3; lat <= 11.6; lat += step) {
+        if (isPointInPolygon(lon, lat, TRUONGSA_POLYGON)) {
+          cells.push({
+            id: `${scenarioId}-truongsa-grid-${idCounter++}`,
+            lon,
+            lat,
+            value: truongsaPt.value
+          })
+        }
+      }
+    }
+  }
+
+  return cells
+}
 
 function buildGridGeoJson(cells: GridCell[], cellSizeMeters: number) {
   const R = cellSizeMeters * 0.38
   const D_lat = 111120
 
   const features = cells.map((cell) => {
-    const isHoangsa = cell.id.endsWith('hoangsa')
-    const isTruongsa = cell.id.endsWith('truongsa')
-
-    if (isHoangsa || isTruongsa) {
-      return {
-        type: 'Feature',
-        properties: {
-          id: cell.id,
-          value: cell.value,
-        },
-        geometry: {
-          type: 'Polygon',
-          coordinates: [isHoangsa ? HOANGSA_POLYGON : TRUONGSA_POLYGON],
-        },
-      }
-    }
-
     const cosLat = Math.cos((cell.lat * Math.PI) / 180)
     const dLat = R / D_lat
     const dLon = R / (D_lat * cosLat)
@@ -1030,7 +1071,7 @@ function App() {
   const [scenarioId, setScenarioId] = useState<DisasterScenario['id']>('temperature')
   const [selectedStationId, setSelectedStationId] = useState<string>('hanoi')
   const [lang, setLang] = useState<Language>('vi')
-  const [mapTheme, setMapTheme] = useState<MapThemeId>('satellite')
+  const [mapTheme, setMapTheme] = useState<MapThemeId>('dark')
   const [regionLayer, setRegionLayer] = useState<RegionLayerId>('stations')
   const [vietnamGeoJson, setVietnamGeoJson] = useState<VietnamGeoJson | null>(null)
   const [timeline, setTimeline] = useState<KmaFrame[]>(() => {
@@ -1136,25 +1177,8 @@ function App() {
       cells = buildVietnamGrid(activeScenario, vietnamGeoJson)
     }
 
-    const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
-    const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
-
-    if (hoangsaPt && !cells.some((c) => c.id.endsWith('hoangsa'))) {
-      cells.push({
-        id: `${activeScenario.id}-hoangsa`,
-        lon: hoangsaPt.lon,
-        lat: hoangsaPt.lat,
-        value: hoangsaPt.value,
-      })
-    }
-    if (truongsaPt && !cells.some((c) => c.id.endsWith('truongsa'))) {
-      cells.push({
-        id: `${activeScenario.id}-truongsa`,
-        lon: truongsaPt.lon,
-        lat: truongsaPt.lat,
-        value: truongsaPt.value,
-      })
-    }
+    const islandCells = generateIslandGridCells(activeScenario.id, activeScenario)
+    cells.push(...islandCells)
 
     return cells
   }, [activeFrame, activeScenario, vietnamGeoJson])
@@ -1242,41 +1266,25 @@ function App() {
     const features = regionLayer === 'regions' ? [...regionalFeatures] : []
 
     if (regionLayer === 'regions') {
-      const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
-      const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
-
-      if (hoangsaPt) {
+      const islandGridCells = generateIslandGridCells(activeScenario.id, activeScenario)
+      const islandGrid = buildGridGeoJson(islandGridCells, activeScenario.gridCellSizeMeters)
+      islandGrid.features.forEach((f, idx) => {
+        const cell = islandGridCells[idx]
         features.push({
           type: 'Feature',
           properties: {
-            id: 'hoangsa',
-            label: 'Hoàng Sa',
-            value: hoangsaPt.value,
-            lon: hoangsaPt.lon,
-            lat: hoangsaPt.lat,
+            id: cell.id,
+            label: cell.id.includes('hoangsa') ? 'Hoàng Sa' : 'Trường Sa',
+            value: cell.value,
+            lon: cell.lon,
+            lat: cell.lat,
           },
           geometry: {
             type: 'MultiPolygon',
-            coordinates: [[HOANGSA_POLYGON as [number, number][]]],
-          },
+            coordinates: [f.geometry.coordinates as PolygonCoordinates]
+          }
         } as any)
-      }
-      if (truongsaPt) {
-        features.push({
-          type: 'Feature',
-          properties: {
-            id: 'truongsa',
-            label: 'Trường Sa',
-            value: truongsaPt.value,
-            lon: truongsaPt.lon,
-            lat: truongsaPt.lat,
-          },
-          geometry: {
-            type: 'MultiPolygon',
-            coordinates: [[TRUONGSA_POLYGON as [number, number][]]],
-          },
-        } as any)
-      }
+      })
     }
 
     return {
@@ -1463,7 +1471,7 @@ function App() {
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: createMapStyle('satellite'),
+      style: createMapStyle('dark'),
       center: [109.5, 15.0],
       zoom: 4.8,
       pitch: 0,
