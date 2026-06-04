@@ -359,11 +359,44 @@ function getColumnElevationValue(cell: GridCell, scenario: DisasterScenario) {
   return getLinearElevationValue(cell.value, scenario)
 }
 
+const HOANGSA_POLYGON = [
+  [111.0, 17.2],
+  [114.2, 17.2],
+  [114.2, 15.6],
+  [111.0, 15.6],
+  [111.0, 17.2]
+]
+
+const TRUONGSA_POLYGON = [
+  [111.0, 11.5],
+  [115.5, 11.5],
+  [115.5, 8.5],
+  [111.0, 8.5],
+  [111.0, 11.5]
+]
+
 function buildGridGeoJson(cells: GridCell[], cellSizeMeters: number) {
   const R = cellSizeMeters * 0.38
   const D_lat = 111120
 
   const features = cells.map((cell) => {
+    const isHoangsa = cell.id.endsWith('hoangsa')
+    const isTruongsa = cell.id.endsWith('truongsa')
+
+    if (isHoangsa || isTruongsa) {
+      return {
+        type: 'Feature',
+        properties: {
+          id: cell.id,
+          value: cell.value,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [isHoangsa ? HOANGSA_POLYGON : TRUONGSA_POLYGON],
+        },
+      }
+    }
+
     const cosLat = Math.cos((cell.lat * Math.PI) / 180)
     const dLat = R / D_lat
     const dLon = R / (D_lat * cosLat)
@@ -1089,8 +1122,9 @@ function App() {
   const legendTicks = useMemo(() => createLegendTicks(activeScenario), [activeScenario])
 
   const gridCells = useMemo(() => {
+    let cells: GridCell[] = []
     if (activeFrame?.gridPoints?.length) {
-      return activeFrame.gridPoints
+      cells = activeFrame.gridPoints
         .filter((point) => activeScenario.id !== 'rain' || point.value > 0)
         .map((point) => ({
           id: `${activeScenario.id}-${point.id}`,
@@ -1098,9 +1132,31 @@ function App() {
           lat: point.lat,
           value: point.value,
         }))
+    } else {
+      cells = buildVietnamGrid(activeScenario, vietnamGeoJson)
     }
 
-    return buildVietnamGrid(activeScenario, vietnamGeoJson)
+    const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
+    const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
+
+    if (hoangsaPt && !cells.some((c) => c.id.endsWith('hoangsa'))) {
+      cells.push({
+        id: `${activeScenario.id}-hoangsa`,
+        lon: hoangsaPt.lon,
+        lat: hoangsaPt.lat,
+        value: hoangsaPt.value,
+      })
+    }
+    if (truongsaPt && !cells.some((c) => c.id.endsWith('truongsa'))) {
+      cells.push({
+        id: `${activeScenario.id}-truongsa`,
+        lon: truongsaPt.lon,
+        lat: truongsaPt.lat,
+        value: truongsaPt.value,
+      })
+    }
+
+    return cells
   }, [activeFrame, activeScenario, vietnamGeoJson])
 
   const regionalFeatures = useMemo(() => buildRegionalFeatures(vietnamGeoJson, activeScenario), [activeScenario, vietnamGeoJson])
@@ -1183,7 +1239,46 @@ function App() {
   }, [regionLayer, gridCells, activeScenario])
 
   const regionalFeaturesGeoJson = useMemo(() => {
-    const features = regionLayer === 'regions' ? regionalFeatures : []
+    const features = regionLayer === 'regions' ? [...regionalFeatures] : []
+
+    if (regionLayer === 'regions') {
+      const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
+      const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
+
+      if (hoangsaPt) {
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: 'hoangsa',
+            label: 'Hoàng Sa',
+            value: hoangsaPt.value,
+            lon: hoangsaPt.lon,
+            lat: hoangsaPt.lat,
+          },
+          geometry: {
+            type: 'MultiPolygon',
+            coordinates: [[HOANGSA_POLYGON as [number, number][]]],
+          },
+        } as any)
+      }
+      if (truongsaPt) {
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: 'truongsa',
+            label: 'Trường Sa',
+            value: truongsaPt.value,
+            lon: truongsaPt.lon,
+            lat: truongsaPt.lat,
+          },
+          geometry: {
+            type: 'MultiPolygon',
+            coordinates: [[TRUONGSA_POLYGON as [number, number][]]],
+          },
+        } as any)
+      }
+    }
+
     return {
       type: 'FeatureCollection',
       features: features.map((f) => ({
@@ -1198,7 +1293,36 @@ function App() {
   }, [regionLayer, regionalFeatures, activeScenario])
 
   const regionalLabelsGeoJson = useMemo(() => {
-    const features = overlayVisibility.provinceLabels && regionLayer === 'regions' ? regionalFeatures : []
+    const features = overlayVisibility.provinceLabels && regionLayer === 'regions' ? [...regionalFeatures] : []
+
+    if (regionLayer === 'regions') {
+      const hoangsaPt = activeScenario.points.find((p) => p.id === 'hoangsa')
+      const truongsaPt = activeScenario.points.find((p) => p.id === 'truongsa')
+
+      if (hoangsaPt && !features.some((f) => f.properties.id === 'hoangsa')) {
+        features.push({
+          properties: {
+            id: 'hoangsa',
+            label: 'Hoàng Sa',
+            value: hoangsaPt.value,
+            lon: hoangsaPt.lon,
+            lat: hoangsaPt.lat,
+          },
+        } as any)
+      }
+      if (truongsaPt && !features.some((f) => f.properties.id === 'truongsa')) {
+        features.push({
+          properties: {
+            id: 'truongsa',
+            label: 'Trường Sa',
+            value: truongsaPt.value,
+            lon: truongsaPt.lon,
+            lat: truongsaPt.lat,
+          },
+        } as any)
+      }
+    }
+
     return {
       type: 'FeatureCollection',
       features: features.map((f) => ({
@@ -1214,6 +1338,14 @@ function App() {
       })),
     }
   }, [overlayVisibility.provinceLabels, regionLayer, regionalFeatures, activeScenario, lang])
+
+  const initialTriggerRef = useRef(false)
+  useEffect(() => {
+    if (mapLayersInitialized && !initialTriggerRef.current) {
+      initialTriggerRef.current = true
+      setRefreshNonce((n) => n + 1)
+    }
+  }, [mapLayersInitialized])
 
   const calloutPinsGeoJson = useMemo(() => {
     const points = (overlayVisibility.callouts && regionLayer === 'stations') ? calloutPoints : []

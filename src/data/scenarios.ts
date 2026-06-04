@@ -117,7 +117,7 @@ const standardStations: Omit<DisasterPoint, 'value'>[] = [
   { id: 'phuquoc', name: '푸꾸옥', names: { vi: 'Phú Quốc', en: 'Phuquoc', ko: '푸꾸옥' }, lat: 10.2899, lon: 103.9840 },
   { id: 'camau', name: '까마우', names: { vi: 'Cà Mau', en: 'Camau', ko: '까마우' }, lat: 9.1769, lon: 105.1524 },
   { id: 'hoangsa', name: 'Hoàng Sa', names: { vi: 'Hoàng Sa', en: 'Hoang Sa Islands', ko: '황사 제도' }, lat: 16.5, lon: 112.5 },
-  { id: 'truongsa', name: 'Trường Sa', names: { vi: 'Trường Sa', en: 'Spratly Islands', ko: '쯔엉사 제도' }, lat: 8.63, lon: 111.9 },
+  { id: 'truongsa', name: 'Trường Sa', names: { vi: 'Trường Sa', en: 'Spratly Islands', ko: '쯔엉사 제도' }, lat: 9.5, lon: 111.9 },
 ]
 
 const humidityValues: Record<string, number> = {
