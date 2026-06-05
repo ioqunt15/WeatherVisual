@@ -31,6 +31,8 @@ import {
   X,
   Gauge,
   Cloud,
+  Menu,
+  Sliders,
 } from 'lucide-react'
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -40,7 +42,7 @@ import { historicalTyphoons, type HistoricalTyphoon } from './data/typhoons'
 import { createMapStyle, mapThemes, type MapThemeId } from './data/mapThemes'
 import { buildVietnamGrid, type GridCell, type VietnamGeoJson } from './utils/vietnamGrid'
 import { rgbaToCss, valueToSteppedColor } from './utils/color'
-import { loadWeatherTimeline, type KmaFrame } from './services/kma'
+import { loadWeatherTimeline, type VhwisFrame } from './services/kma'
 
 type RegionLayerId = 'stations' | 'regions'
 
@@ -88,10 +90,6 @@ type ScriptText = {
   subtitle: string
 }
 
-type RainRange = {
-  start: string
-  end: string
-}
 
 type CameraShot = {
   id: string
@@ -162,55 +160,6 @@ function createScriptText(scenario: DisasterScenario): ScriptText {
 
 
 
-function toDateTimeLocalValue(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`
-}
-
-function createDefaultRainRange(now = new Date()): RainRange {
-  const end = new Date(now)
-  end.setMinutes(0, 0, 0)
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-
-  return {
-    start: toDateTimeLocalValue(start),
-    end: toDateTimeLocalValue(end),
-  }
-}
-
-function getRangeHours(range: RainRange) {
-  const start = new Date(range.start).getTime()
-  const end = new Date(range.end).getTime()
-
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    return 0
-  }
-
-  return Math.round(((end - start) / 3_600_000) * 10) / 10
-}
-
-function formatDateTimeLabel(value: string) {
-  return value.replace('T', ' ')
-}
-
-function createRainRangeFrame(scenario: DisasterScenario, range: RainRange): KmaFrame {
-  const hours = getRangeHours(range) || 24
-  const roundedHours = Number.isInteger(hours) ? hours : Math.round(hours * 10) / 10
-
-  return {
-    id: `${scenario.id}-range-${range.start}-${range.end}`,
-    label: `${roundedHours}시간 누적`,
-    updatedAt: `${formatDateTimeLabel(range.start)} ~ ${formatDateTimeLabel(range.end)}`,
-    source: 'Open-Meteo 누적강수량 통계',
-    points: scenario.points,
-    successfulPoints: scenario.points.length,
-  }
-}
 
 function createCameraThumbnail(view: Pick<CameraShot, 'center' | 'zoom' | 'pitch' | 'bearing'>, index: number) {
   const label = `VIEW ${String(index + 1).padStart(2, '0')}`
@@ -285,7 +234,7 @@ function getHistoricalTyphoonPathData(typhoon: HistoricalTyphoon, frameIdx: numb
   }
 }
 
-function generateTyphoonTimeline(typhoonId: string, lang: Language): KmaFrame[] {
+function generateTyphoonTimeline(typhoonId: string, lang: Language): VhwisFrame[] {
   if (typhoonId === 'live') {
     const now = new Date()
     const utcTime = now.getTime() + now.getTimezoneOffset() * 60 * 1000
@@ -367,14 +316,14 @@ function generateTyphoonTimeline(typhoonId: string, lang: Language): KmaFrame[] 
   })
 }
 
-function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi'): KmaFrame[] {
+function generateMockTimeline(scenario: DisasterScenario, lang: Language = 'vi'): VhwisFrame[] {
   const now = new Date()
   
   // Calculate Vietnam standard time (ICT, GMT+7) based on browser's UTC time
   const utcTime = now.getTime() + now.getTimezoneOffset() * 60 * 1000
   const timeNow = new Date(utcTime + 7 * 60 * 60 * 1000)
   
-  const frames: KmaFrame[] = []
+  const frames: VhwisFrame[] = []
   
   // 1. 현재상태 (실황) 프레임 추가 (Index 0)
   const hourNow = timeNow.getHours()
@@ -1461,7 +1410,7 @@ function App() {
   const [mapTheme, setMapTheme] = useState<MapThemeId>('satellite')
   const [regionLayer, setRegionLayer] = useState<RegionLayerId>('stations')
   const [vietnamGeoJson, setVietnamGeoJson] = useState<VietnamGeoJson | null>(null)
-  const [timeline, setTimeline] = useState<KmaFrame[]>(() => {
+  const [timeline, setTimeline] = useState<VhwisFrame[]>(() => {
     const defaultSec = scenarios.find((s) => s.id === 'temperature') || scenarios[0]
     return generateMockTimeline(defaultSec, 'vi')
   })
@@ -1503,8 +1452,6 @@ function App() {
       }, {} as Record<DisasterScenario['id'], ScriptText>)
     })
   }, [lang])
-  const [rainRangeDraft, setRainRangeDraft] = useState<RainRange>(() => createDefaultRainRange())
-  const [rainRange, setRainRange] = useState<RainRange>(() => createDefaultRainRange())
   const [columnReveal, setColumnReveal] = useState(1)
   const [cameraPanelOpen, setCameraPanelOpen] = useState(false)
   const [cameraShots, setCameraShots] = useState<CameraShot[]>(() => createDefaultCameraShots())
@@ -1519,6 +1466,8 @@ function App() {
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [showControls, setShowControls] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileBoardOpen, setMobileBoardOpen] = useState(false)
   const [is3DMode, setIs3DMode] = useState(true)
   const is3DModeRef = useRef(is3DMode)
   const [mapStyleLoaded, setMapStyleLoaded] = useState(false)
@@ -1548,7 +1497,6 @@ function App() {
     }
     return base
   }, [scriptTexts, scenario.id, selectedTyphoonId, lang])
-  const rainRangeHours = useMemo(() => getRangeHours(rainRangeDraft), [rainRangeDraft])
 
   const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
   const activeFrame = timeline[activeFrameIndex]
@@ -1660,10 +1608,7 @@ function App() {
           : activeScenario.points
 
       return [...points]
-        .filter((point) => {
-          if (activeScenario.id === 'rain' && point.value <= 0) return false
-          return true
-        })
+        .filter(() => true)
         .sort((a, b) => b.value - a.value)
         .slice(0, 5)
     },
@@ -1684,10 +1629,7 @@ function App() {
   const calloutPoints = useMemo<CalloutPoint[]>(
     () =>
       [...activeScenario.points]
-        .filter((point) => {
-          if (activeScenario.id === 'rain' && point.value <= 0) return false
-          return true
-        })
+        .filter(() => true)
         .sort((a, b) => b.lat - a.lat)
         .map((point, index) => {
           const layout = CALLOUT_LAYOUTS[point.id] ?? {
@@ -2005,22 +1947,15 @@ function App() {
       return
     }
 
-    if (!scenario.kmaCategory) {
+    if (!scenario.vhwisCategory) {
       setFrameIndex(0)
       setTimeline(generateMockTimeline(scenario, lang))
       setDataStatus({ key: 'status_ai_forecast' })
       return
     }
 
-    if (scenario.id === 'rain') {
-      setFrameIndex(0)
-      setTimeline([createRainRangeFrame(scenario, rainRange)])
-      setDataStatus({ key: 'status_rain_range' })
-    }
-
     loadWeatherTimeline(scenario, controller.signal, {
       forceRefresh: refreshNonce > 0,
-      ...(scenario.id === 'rain' ? rainRange : {}),
     })
       .then((payload) => {
         if (cancelled || requestId !== requestSeqRef.current || payload.scenarioId !== scenario.id) {
@@ -2049,7 +1984,7 @@ function App() {
       cancelled = true
       controller.abort()
     }
-  }, [rainRange, scenario, refreshNonce, lang, selectedTyphoonId])
+  }, [scenario, refreshNonce, lang, selectedTyphoonId])
 
   // Mouse right click listener and context menu prevention
   useEffect(() => {
@@ -2267,12 +2202,8 @@ function App() {
     
     try {
       // 측정지점 격자 기둥: stations 모드에서만 표출
-      if (map.getLayer('kma-grid-columns-native')) {
-        map.setLayoutProperty('kma-grid-columns-native', 'visibility', (isStations && !isWindScenario) ? 'visible' : 'none')
-      }
-      // 격자 바람 화살표: stations 모드 + 바람 시나리오에서만 표출
-      if (map.getLayer('kma-grid-wind-arrows')) {
-        map.setLayoutProperty('kma-grid-wind-arrows', 'visibility', (isStations && isWindScenario) ? 'visible' : 'none')
+      if (map.getLayer('vhwis-grid-columns-native')) {
+        map.setLayoutProperty('vhwis-grid-columns-native', 'visibility', (isStations && !isWindScenario) ? 'visible' : 'none')
       }
       // 광역지역 폴리곤: regions 모드에서만 표출
       if (map.getLayer('regional-polygons-native')) {
@@ -2375,7 +2306,7 @@ function App() {
         // 1-1. 소스 등록 - 이미 있으면 제거 후 재등록
         const sourcesToAdd = [
           { id: 'vietnam-regions-source', data: regionalFeaturesGeoJson },
-          { id: 'kma-grid-source', data: gridGeoJson },
+          { id: 'vhwis-grid-source', data: gridGeoJson },
           { id: 'callout-pins-source', data: calloutPinsGeoJson },
           { id: 'regional-labels-source', data: regionalLabelsGeoJson },
           { id: 'typhoon-source', data: typhoonGeoJson },
@@ -2410,11 +2341,11 @@ function App() {
         }
 
         // 1-3. 격자 기둥 레이어 (fill-extrusion) - stations 모드에서만 표출
-        if (!map.getLayer('kma-grid-columns-native')) {
+        if (!map.getLayer('vhwis-grid-columns-native')) {
           map.addLayer({
-            id: 'kma-grid-columns-native',
+            id: 'vhwis-grid-columns-native',
             type: 'fill-extrusion',
-            source: 'kma-grid-source',
+            source: 'vhwis-grid-source',
             layout: {
               'visibility': (regionLayer === 'stations' && (!['wind', 'forecast_wind', 'gust', 'typhoon'].includes(scenarioId) || ['wind', 'forecast_wind', 'gust'].includes(scenarioId) || (scenarioId === 'typhoon' && overlayWind))) ? 'visible' : 'none',
             },
@@ -2426,36 +2357,6 @@ function App() {
               'fill-extrusion-base': 0,
               'fill-extrusion-opacity': 0.95,
               'fill-extrusion-vertical-gradient': true,
-            },
-          })
-        }
-
-        // 1-3b. 격자 바람 화살표 레이어 (symbol) - 바람/태풍 시나리오 + stations 모드에서만 표출
-        if (!map.getLayer('kma-grid-wind-arrows')) {
-          map.addLayer({
-            id: 'kma-grid-wind-arrows',
-            type: 'symbol',
-            source: 'kma-grid-source',
-            layout: {
-              'visibility': 'none',
-              'icon-image': 'wind-arrow-sdf',
-              'icon-rotate': ['get', 'direction'],
-              'icon-rotation-alignment': 'map',
-              'icon-size': [
-                'interpolate',
-                ['linear'],
-                ['get', 'value'],
-                0, 0.35,
-                15, 0.65,
-                40, 1.0,
-                75, 1.4
-              ],
-              'icon-allow-overlap': true,
-              'icon-ignore-placement': true,
-            },
-            paint: {
-              'icon-color': ['get', 'color'],
-              'icon-opacity': 0.78,
             },
           })
         }
@@ -2724,7 +2625,7 @@ function App() {
         }
 
         // [CRITICAL FIX] 레이어 등록 직후 최신 GeoJSON 데이터 연속 재주입 (setData 중복 호출이지만 유일한 확실한 방법)
-        const gridSourceFinal = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
+        const gridSourceFinal = map.getSource('vhwis-grid-source') as maplibregl.GeoJSONSource
         if (gridSourceFinal) gridSourceFinal.setData(gridGeoJson as any)
 
         const regionSourceFinal = map.getSource('vietnam-regions-source') as maplibregl.GeoJSONSource
@@ -2767,7 +2668,7 @@ function App() {
         regionSource.setData(regionalFeaturesGeoJson as any)
       }
 
-      const gridSource = map.getSource('kma-grid-source') as maplibregl.GeoJSONSource
+      const gridSource = map.getSource('vhwis-grid-source') as maplibregl.GeoJSONSource
       if (gridSource) {
         gridSource.setData(gridGeoJson as any)
       }
@@ -2880,12 +2781,14 @@ function App() {
     let animationId: number
     let running = true
 
-    const particleCount = 400
+    const particleCount = 60
     const particles: Array<{
       lon: number
       lat: number
       life: number
       age: number
+      trail: Array<{ lon: number; lat: number }>
+      lengthScale: number // 각 입자별 고유 길이/속도 배율 (0.5 ~ 1.3)
     }> = []
 
     const resizeCanvas = () => {
@@ -2902,8 +2805,8 @@ function App() {
       if (currentGrid && currentGrid.length > 0) {
         const cell = currentGrid[Math.floor(Math.random() * currentGrid.length)]
         // Small jitter so they spawn smoothly in the administrative area
-        const jitterLon = (Math.random() - 0.5) * 0.12
-        const jitterLat = (Math.random() - 0.5) * 0.12
+        const jitterLon = (Math.random() - 0.5) * 0.4
+        const jitterLat = (Math.random() - 0.5) * 0.4
         return {
           lon: cell.lon + jitterLon,
           lat: cell.lat + jitterLat
@@ -2952,82 +2855,125 @@ function App() {
     // Initialize particles in geographic positions inside Vietnam's territory
     for (let i = 0; i < particleCount; i++) {
       const pos = getRandomGridPos()
+      const life = 300 + Math.random() * 100
+      const lengthScale = 1.0 + Math.random() * 0.2 // 1.0배에서 1.2배 사이의 무작위 배율
       particles.push({
         lon: pos.lon,
         lat: pos.lat,
-        life: 20 + Math.random() * 40,
-        age: 0
+        life: life,
+        age: Math.floor(Math.random() * life), // 초기 나이를 분산하여 주기적 재생성 깜빡임 방지
+        trail: [{ lon: pos.lon, lat: pos.lat }],
+        lengthScale: lengthScale
       })
     }
 
     const drawFrame = () => {
       if (!running) return
 
-      // Clear the canvas when the map is moving (panning/zooming) to avoid trailing/smearing issues
-      if (map.isMoving()) {
+      try {
+        // Clear the canvas completely to redraw all 3D projected trails in real-time
         ctx.clearRect(0, 0, canvas.width, canvas.height)
-      } else {
-        ctx.globalCompositeOperation = 'destination-out'
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        ctx.globalCompositeOperation = 'source-over'
-      }
 
-      const points = activeScenarioPointsRef.current
-      const maxVal = activeScenarioMaxValRef.current || 25
-      const bearing = map.getBearing()
-      const width = canvas.width
-      const height = canvas.height
+        const points = activeScenarioPointsRef.current
+        const maxVal = activeScenarioMaxValRef.current || 25
+        const width = canvas.width
+        const height = canvas.height
+        const zoom = map.getZoom()
 
-      for (let i = 0; i < particleCount; i++) {
-        const p = particles[i]
+        // Calculate degrees per pixel at equator/zoom level to scale geographic speed
+        const degPerPixel = 600 / (Math.pow(2, zoom) * 256)
 
-        // Project particle coordinates to screen space
-        let posScreen = map.project([p.lon, p.lat])
+        // Calculate screen-space height offset for 3D altitude effect (18,000m)
+        const pitchRad = (map.getPitch() * Math.PI) / 180
+        const pixelsPerMeter = (256 * Math.pow(2, zoom)) / 40075000
+        const heightOffset = 18000 * pixelsPerMeter * Math.sin(pitchRad)
 
-        // Respawn if expired, or went outside the viewport
-        if (
-          p.age >= p.life ||
-          posScreen.x < 0 || posScreen.x > width ||
-          posScreen.y < 0 || posScreen.y > height
-        ) {
-          const newPos = getRandomGridPos()
-          p.lon = newPos.lon
-          p.lat = newPos.lat
-          p.life = 20 + Math.random() * 40
-          p.age = 0
-          posScreen = map.project([p.lon, p.lat])
+        // 줌레벨 스케일 보정 계수 (줌 6보다 확대될 시 점진적으로 커지게 함)
+        const zoomScale = zoom > 6 ? 1.0 + (zoom - 6) * 0.45 : 1.0
+
+        for (let i = 0; i < particleCount; i++) {
+          const p = particles[i]
+
+          // Project particle coordinates to screen space for boundaries checking
+          let posScreen = map.project([p.lon, p.lat])
+
+          // Respawn if expired, or went outside the viewport bounds
+          if (
+            p.age >= p.life ||
+            posScreen.x < 0 || posScreen.x > width ||
+            posScreen.y < 0 || posScreen.y > height
+          ) {
+            const newPos = getRandomGridPos()
+            p.lon = newPos.lon
+            p.lat = newPos.lat
+            p.life = 300 + Math.random() * 100
+            p.age = 0
+            p.trail = [{ lon: p.lon, lat: p.lat }]
+            p.lengthScale = 0.5 + Math.random() * 0.8
+            posScreen = map.project([p.lon, p.lat])
+          }
+
+          const speed = estimateValueLocal(p.lon, p.lat, points)
+          const direction = estimateDirectionLocal(p.lon, p.lat, points)
+
+          // Meteorological direction + 180 = Vector direction of movement (wind blows TO)
+          const travelAngleRad = ((direction + 180) * Math.PI) / 180
+          const cosLat = Math.cos((p.lat * Math.PI) / 180)
+          
+          // Adjust longitude step for latitude scale
+          const dLon = Math.sin(travelAngleRad) / (cosLat > 0.1 ? cosLat : 1)
+          const dLat = Math.cos(travelAngleRad)
+
+          // Proportional speed: low wind = 0.08px/frame, high wind = 0.32px/frame
+          // 고유 배율(lengthScale)과 줌인 보정 배율(zoomScale)을 결합
+          const S = (0.08 + (speed / maxVal) * 0.32) * p.lengthScale * zoomScale
+          // Limit step size in degrees per frame to prevent zigzagging at low zoom
+          const stepSize = Math.min(0.065, S * degPerPixel)
+
+          p.lon += dLon * stepSize
+          p.lat += dLat * stepSize
+          p.age++
+
+          p.trail.push({ lon: p.lon, lat: p.lat })
+          
+          // 각 파티클 개별 길이 배율에 맞춰 꼬리 길이 지정 (기본 40 기준)
+          const maxTrailLength = Math.round(40 * p.lengthScale)
+          if (p.trail.length > maxTrailLength) {
+            p.trail.shift()
+          }
+
+          // Draw particle trail projected in 3D using standard map.project and altitude offset
+          const points2D: Array<{ x: number, y: number }> = []
+          for (let j = 0; j < p.trail.length; j++) {
+            const pt = p.trail[j]
+            const basePos = map.project([pt.lon, pt.lat])
+            points2D.push({
+              x: basePos.x,
+              y: basePos.y - heightOffset
+            })
+          }
+
+          // Render the trail as tapered lines
+          if (points2D.length > 1) {
+            for (let j = 1; j < points2D.length; j++) {
+              ctx.beginPath()
+              ctx.moveTo(points2D[j - 1].x, points2D[j - 1].y)
+              ctx.lineTo(points2D[j].x, points2D[j].y)
+              
+              const ratio = j / points2D.length
+              // Tapered opacity and stroke width for the flowing trail (1/4 of the thick 22.5px size)
+              ctx.strokeStyle = `rgba(245, 248, 255, ${ratio * (0.75 + (speed / maxVal) * 0.95)})`
+              
+              // 줌에 따른 선 굵기 보정 추가
+              const zoomWidthScale = zoom > 6 ? 1.0 + (zoom - 6) * 0.1 : 1.0
+              ctx.lineWidth = (0.8 + ratio * 3.0) * (0.8 + (speed / maxVal) * 1.2) * zoomWidthScale
+              ctx.stroke()
+            }
+          }
         }
-
-        const speed = estimateValueLocal(p.lon, p.lat, points)
-        const direction = estimateDirectionLocal(p.lon, p.lat, points)
-
-        // Convert meteorological direction to screen space angle
-        const angleScreen = ((direction - bearing) * Math.PI) / 180
-        const dx = Math.sin(angleScreen)
-        const dy = -Math.cos(angleScreen)
-
-        // Slow, elegant pixel speed: low speed = 0.12px/frame, max speed = ~1.1px/frame
-        const speedScale = 0.12 + (speed / maxVal) * 0.98
-        const stepX = dx * speedScale
-        const stepY = dy * speedScale
-
-        const nextX = posScreen.x + stepX
-        const nextY = posScreen.y + stepY
-
-        // Convert next screen coordinates back to geographic coordinates
-        const nextLngLat = map.unproject([nextX, nextY])
-
-        ctx.beginPath()
-        ctx.moveTo(posScreen.x, posScreen.y)
-        ctx.lineTo(nextX, nextY)
-        ctx.strokeStyle = `rgba(240, 248, 255, ${0.18 + (speed / maxVal) * 0.65})`
-        ctx.lineWidth = 0.8 + (speed / maxVal) * 1.5
-        ctx.stroke()
-
-        p.lon = nextLngLat.lng
-        p.lat = nextLngLat.lat
-        p.age++
+      } catch (err) {
+        console.error('Error in wind particle drawing loop:', err)
+        running = false
       }
 
       animationId = requestAnimationFrame(drawFrame)
@@ -3067,9 +3013,9 @@ function App() {
     }
 
     // 3-2. 레이어의 fill-extrusion-height 갱신
-    if (map.getLayer('kma-grid-columns-native')) {
+    if (map.getLayer('vhwis-grid-columns-native')) {
       map.setPaintProperty(
-        'kma-grid-columns-native',
+        'vhwis-grid-columns-native',
         'fill-extrusion-height',
         ['*', ['get', 'elevation'], columnReveal]
       )
@@ -3568,31 +3514,17 @@ function App() {
     setFrameIndex(0)
     startColumnReveal()
     setIsTimelinePlaying(false)
-    setDataStatus({ key: nextScenario.kmaCategory ? 'status_checking' : 'status_sample' })
+    setMobileMenuOpen(false)
+    setDataStatus({ key: nextScenario.vhwisCategory ? 'status_checking' : 'status_sample' })
     setTimeline(generateMockTimeline(nextScenario, lang))
 
-    if (!nextScenario.kmaCategory) {
+    if (!nextScenario.vhwisCategory) {
       return
     }
   }
 
 
 
-  const applyRainRange = () => {
-    if (getRangeHours(rainRangeDraft) <= 0) {
-      return
-    }
-
-    setIsTimelinePlaying(false)
-    setFrameIndex(0)
-    setColumnReveal(1)
-    setRainRange(rainRangeDraft)
-
-    if (scenario.id === 'rain') {
-      setTimeline([createRainRangeFrame(scenario, rainRangeDraft)])
-      setDataStatus({ key: 'status_rain_apply' })
-    }
-  }
 
   return (
     <main className={`broadcast-shell scenario-${scenario.id} map-${mapTheme} lang-${lang} ${!showControls ? 'controls-hidden' : ''}`}>
@@ -3617,7 +3549,7 @@ function App() {
         )}
 
         {showControls && !shortcutChromeHidden && (
-          <aside className="scenario-sidebar" aria-label="기상 시나리오 선택">
+          <aside className={`scenario-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="기상 시나리오 선택">
             {categories.map((cat) => (
               <div className="category-group" key={cat.id}>
                 <h3 className="category-title">{translations[lang][cat.id] || cat.title}</h3>
@@ -3694,7 +3626,7 @@ function App() {
 
         {overlayVisibility.rank && !shortcutChromeHidden && (
           activeScenario.id === 'typhoon' ? (
-            <aside className="typhoon-board-panel" aria-label={lang === 'ko' ? '태풍 정보 보드' : lang === 'vi' ? 'Thông tin bão' : 'Typhoon Status Board'}>
+            <aside className={`typhoon-board-panel ${mobileBoardOpen ? 'mobile-open' : ''}`} aria-label={lang === 'ko' ? '태풍 정보 보드' : lang === 'vi' ? 'Thông tin bão' : 'Typhoon Status Board'}>
               <div className="panel-heading">
                 <RotateCw size={15} className="spin-icon" style={{ animation: 'spin 4s linear infinite' }} />
                 <span>
@@ -3875,7 +3807,7 @@ function App() {
               </div>
             </aside>
           ) : (
-            <aside className="rank-panel" aria-label={translations[lang]['rank'] || '주요 지점'}>
+            <aside className={`rank-panel ${mobileBoardOpen ? 'mobile-open' : ''}`} aria-label={translations[lang]['rank'] || '주요 지점'}>
               <div className="panel-heading">
                 <BarChart3 size={15} />
                 <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
@@ -4116,27 +4048,67 @@ function App() {
           </button>
         )}
 
+        {!shortcutChromeHidden && (
+          <div className="mobile-toggle-bar">
+            <button 
+              type="button" 
+              className={`mobile-toggle-btn ${mobileMenuOpen ? 'active' : ''}`}
+              onClick={() => {
+                setMobileMenuOpen(!mobileMenuOpen)
+                setMobileBoardOpen(false)
+              }}
+            >
+              <Menu size={14} />
+              <span>{lang === 'ko' ? '메뉴' : lang === 'vi' ? 'Menu' : 'Menu'}</span>
+            </button>
+            <button 
+              type="button" 
+              className={`mobile-toggle-btn ${mobileBoardOpen ? 'active' : ''}`}
+              onClick={() => {
+                setMobileBoardOpen(!mobileBoardOpen)
+                setMobileMenuOpen(false)
+              }}
+            >
+              <Sliders size={14} />
+              <span>
+                {activeScenario.id === 'typhoon' 
+                  ? (lang === 'ko' ? '태풍' : lang === 'vi' ? 'Bão' : 'Typhoon')
+                  : (lang === 'ko' ? '순위' : lang === 'vi' ? 'Bảng xếp hạng' : 'Ranks')}
+              </span>
+            </button>
+          </div>
+        )}
+
         {showControls && (
           <>
-            {overlayVisibility.timeline && timeline.length > 1 && (
+            {overlayVisibility.timeline && timeline.length >= 1 && (
               <div className={`timebar-panel ${isTimebarExpanded ? '' : 'collapsed'}`} aria-label="기상 정보 시간 선택">
                 {(() => {
-                  const valRange = activeScenario.maxValue - activeScenario.minValue;
+                  const totalSteps = timeline.length > 1 ? timeline.length - 1 : 1;
+                  const maxInTrend = Math.max(...selectedTrendData.map((d) => d.value), 0);
+                  const chartMin = activeScenario.minValue;
+                  // Auto-scale vertical axis of the chart if all values are very small (e.g., precipitation < 5mm)
+                  // but keep the ceiling capped at the scenario's native maxValue.
+                  const chartMax = maxInTrend > chartMin
+                    ? Math.min(activeScenario.maxValue, Math.max(maxInTrend * 1.15, chartMin + 1.0))
+                    : activeScenario.maxValue;
+                  const valRange = chartMax - chartMin;
                   const selectedStation = activeScenario.points.find((p) => p.id === selectedStationId) || activeScenario.points[0];
+                  // Top bound 9px, bottom bound 36px, vertical range 27px inside the 42px viewBox
                   const linePath = selectedTrendData
                     .map((item, idx) => {
-                      const x = 10 + (idx / (timeline.length - 1)) * 480;
-                      const y = 35 - (valRange > 0 ? (item.value - activeScenario.minValue) / valRange : 0.5) * 30;
+                      const x = 2 + (idx / totalSteps) * 96;
+                      const y = 80 - (valRange > 0 ? (item.value - chartMin) / valRange : 0.5) * 65;
                       return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
                     })
                     .join(' ');
-                  const areaPath = linePath ? `${linePath} L 490 38 L 10 38 Z` : '';
-                  const activeX = 10 + (activeFrameIndex / (timeline.length - 1)) * 480;
+                  const areaPath = linePath ? `${linePath} L 98 100 L 2 100 Z` : '';
+                  const activePct = 2 + (activeFrameIndex / totalSteps) * 96;
                   const activeValColor = rgbaToCss(valueToSteppedColor(selectedStation?.value ?? activeScenario.minValue, activeScenario.palette, 255));
 
                   return (
                     <>
-                      <div className="timebar-chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 10px', marginBottom: '2px' }}>
+                      <div className="timebar-chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 10px', marginBottom: '0px' }}>
                         <span className="selected-station-badge" style={{ 
                           fontSize: '10px', 
                           fontWeight: 900, 
@@ -4151,47 +4123,89 @@ function App() {
                           {selectedStation?.names?.[lang] || selectedStation?.name || (lang === 'vi' ? 'Trạm' : lang === 'en' ? 'Station' : '지점')} {translations[lang]['trendTitle'] || '실시간 추이'}
                         </span>
                       </div>
-                      <svg className="trend-chart-svg" viewBox="0 0 500 42">
-                        <defs>
-                          <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={activeValColor} stopOpacity="0.4" />
-                            <stop offset="100%" stopColor="rgba(0,0,0,0)" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        {areaPath && <path d={areaPath} fill="url(#chart-area-grad)" />}
-                        {linePath && <path d={linePath} fill="none" stroke={activeValColor} strokeWidth="2" />}
+                      
+                      {/* Responsive trend chart wrapper containing background & border */}
+                      <div className="trend-chart-wrapper">
+                        {/* SVG rendered with preserveAspectRatio="none" to stretch perfectly to 100% width */}
+                        <svg className="trend-chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <defs>
+                            <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={activeValColor} stopOpacity="0.4" />
+                              <stop offset="100%" stopColor="rgba(0,0,0,0)" stopOpacity="0" />
+                            </linearGradient>
+                          </defs>
+                          {areaPath && <path d={areaPath} fill="url(#chart-area-grad)" />}
+                          {linePath && <path d={linePath} fill="none" stroke={activeValColor} strokeWidth="2" />}
+                        </svg>
+                        
+                        {/* Active vertical dashed line */}
+                        <div style={{
+                          position: 'absolute',
+                          left: `${activePct}%`,
+                          top: 0,
+                          bottom: 0,
+                          width: 0,
+                          borderLeft: '1px dashed rgba(255, 255, 255, 0.35)',
+                          pointerEvents: 'none',
+                          zIndex: 1
+                        }} />
+                        
+                        {/* HTML overlay for dots and value labels to prevent text distortion */}
                         {selectedTrendData.map((item, idx) => {
-                          const x = 10 + (idx / (timeline.length - 1)) * 480;
-                          const y = 35 - (valRange > 0 ? (item.value - activeScenario.minValue) / valRange : 0.5) * 30;
+                          const pctX = 2 + (idx / totalSteps) * 96;
+                          const pctY = 80 - (valRange > 0 ? (item.value - chartMin) / valRange : 0.5) * 65;
                           const isActive = idx === activeFrameIndex;
+                          
                           return (
-                            <g key={idx}>
-                              <circle
-                                cx={x}
-                                cy={y}
-                                r={isActive ? 3.5 : 2}
-                                fill={isActive ? '#ffffff' : rgbaToCss(valueToSteppedColor(item.value, activeScenario.palette, 255))}
-                                stroke="#111820"
-                                strokeWidth={isActive ? 1.5 : 0.5}
-                              />
-                              <text
-                                x={x}
-                                y={y - 6}
-                                textAnchor="middle"
-                                fontSize="8.5"
-                                fontWeight="900"
-                                fill="#ffffff"
-                                stroke="#0a121e"
-                                strokeWidth="1.8"
-                                paintOrder="stroke"
-                              >
+                            <div key={idx} style={{
+                              position: 'absolute',
+                              left: `${pctX}%`,
+                              top: `${pctY}%`,
+                              transform: 'translate(-50%, -50%)',
+                              pointerEvents: 'none',
+                              zIndex: 2,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center'
+                            }}>
+                              {/* Value text placed above the dot, with font size matched to time labels */}
+                              <span style={{
+                                position: 'absolute',
+                                bottom: '7px',
+                                fontSize: '10px',
+                                fontWeight: '800',
+                                color: '#ffffff',
+                                textShadow: '0 1px 2px #0a121e, -1px -1px 0 #0a121e, 1px -1px 0 #0a121e, -1px 1px 0 #0a121e, 1px 1px 0 #0a121e',
+                                whiteSpace: 'nowrap'
+                              }}>
                                 {item.value}
-                              </text>
-                            </g>
+                              </span>
+                              
+                              {/* Dot */}
+                              <div style={{
+                                width: isActive ? '7px' : '4px',
+                                height: isActive ? '7px' : '4px',
+                                borderRadius: '50%',
+                                backgroundColor: isActive ? '#ffffff' : rgbaToCss(valueToSteppedColor(item.value, activeScenario.palette, 255)),
+                                border: '1.5px solid #111820',
+                                boxShadow: isActive ? '0 0 6px #ffffff' : 'none'
+                              }} />
+                            </div>
                           );
                         })}
-                        <line x1={activeX} y1="0" x2={activeX} y2="40" stroke="rgba(255,255,255,0.3)" strokeDasharray="2,2" strokeWidth="1" />
-                      </svg>
+                      </div>
+                      
+                      {/* Timeline horizontal axis time labels row - aligned outside the chart box */}
+                      <div className="timebar-axis-row">
+                        {selectedTrendData.map((item, idx) => {
+                          const timePart = item.label.match(/\d{2}:\d{2}/)?.[0] || (item.label.includes('누적') ? (lang === 'ko' ? '누적' : lang === 'vi' ? 'Lũy kế' : 'Accum') : item.label);
+                          return (
+                            <span key={idx} style={{ left: `${2 + (idx / totalSteps) * 96}%` }}>
+                              {timePart}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </>
                   );
                 })()}
@@ -4239,40 +4253,7 @@ function App() {
               </div>
             )}
 
-            {overlayVisibility.timeline && scenario.id === 'rain' && (
-              <form
-                className="rain-range-panel"
-                aria-label={translations[lang]['rainHours'] || '누적강수량 기간 선택'}
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  applyRainRange()
-                }}
-              >
-                <label>
-                  <span>{translations[lang]['rainStart'] || '시작'}</span>
-                  <input
-                    type="datetime-local"
-                    value={rainRangeDraft.start}
-                    onChange={(event) => setRainRangeDraft((value) => ({ ...value, start: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>{translations[lang]['rainEnd'] || '마감'}</span>
-                  <input
-                    type="datetime-local"
-                    value={rainRangeDraft.end}
-                    onChange={(event) => setRainRangeDraft((value) => ({ ...value, end: event.target.value }))}
-                  />
-                </label>
-                <div className="range-total">
-                  <strong>{rainRangeHours > 0 ? rainRangeHours : '-'}</strong>
-                  <span>{translations[lang]['rainHours'] || '시간 누적'}</span>
-                </div>
-                <button type="submit" disabled={rainRangeHours <= 0}>
-                  {translations[lang]['rainApply'] || '적용'}
-                </button>
-              </form>
-            )}
+
 
 
 

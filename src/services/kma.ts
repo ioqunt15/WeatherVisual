@@ -1,6 +1,6 @@
 import type { DisasterPoint, DisasterScenario } from '../data/scenarios'
 
-export type KmaFrame = {
+export type VhwisFrame = {
   id: string
   label: string
   updatedAt: string
@@ -12,7 +12,7 @@ export type KmaFrame = {
 
 export type WeatherTimeline = {
   scenarioId: DisasterScenario['id']
-  frames: KmaFrame[]
+  frames: VhwisFrame[]
   cacheHit: boolean
   successfulPoints: number
   updatedAt: string

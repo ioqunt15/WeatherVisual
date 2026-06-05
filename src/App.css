@@ -1108,45 +1108,62 @@
 .scenario-temperature {
   --accent-color: #ff5e3a;
 }
-
 .scenario-humidity {
   --accent-color: #1a75ff;
 }
-
 .scenario-wind {
   --accent-color: #00cc88;
 }
-
+.scenario-gust {
+  --accent-color: #00cc99;
+}
+.scenario-pressure {
+  --accent-color: #00acc1;
+}
 .scenario-rain {
   --accent-color: #00a3e0;
 }
-
+.scenario-solar {
+  --accent-color: #ffb300;
+}
 .scenario-forecast_temp {
   --accent-color: #ff7a00;
 }
-
 .scenario-forecast_rain {
   --accent-color: #0080ff;
 }
-
+.scenario-forecast_wind {
+  --accent-color: #00cc88;
+}
+.scenario-forecast_humidity {
+  --accent-color: #1a75ff;
+}
+.scenario-cloud {
+  --accent-color: #9e9e9e;
+}
 .scenario-heat {
   --accent-color: #e60000;
 }
-
 .scenario-wildfire {
   --accent-color: #ff5722;
 }
-
 .scenario-uv {
   --accent-color: #9c27b0;
 }
-
 .scenario-aqi {
   --accent-color: #10ac84;
 }
-
-.scenario-future_danger {
-  --accent-color: #ff9800;
+.scenario-landslide {
+  --accent-color: #e53935;
+}
+.scenario-flood {
+  --accent-color: #2196f3;
+}
+.scenario-drought {
+  --accent-color: #d84315;
+}
+.scenario-typhoon {
+  --accent-color: #ff1744;
 }
 
 .map-admin {
@@ -1348,18 +1365,43 @@
 .timebar-panel {
   display: flex;
   flex-direction: column;
-  min-height: 96px !important;
+  min-height: 122px !important;
   padding: 8px 12px;
 }
 
-.trend-chart-svg {
+.trend-chart-wrapper {
+  position: relative;
   width: 100%;
-  height: 44px;
-  margin-bottom: 6px;
+  height: 50px;
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 4px;
-  padding: 0 4px;
+}
+
+.trend-chart-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.timebar-axis-row {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  margin-top: 5px;
+  margin-bottom: 0px;
+}
+
+.timebar-axis-row span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(218, 234, 251, 0.74);
+  white-space: nowrap;
 }
 
 .timebar-controls-row {
@@ -1602,4 +1644,145 @@
   height: 100%;
   pointer-events: none;
   z-index: 1;
+}
+
+/* Mobile Toggle Bar default (hidden on desktop) */
+.mobile-toggle-bar {
+  display: none;
+}
+
+/* Mobile responsive layout overrides */
+@media (max-width: 768px) {
+  /* Title lockup adjustment */
+  .title-lockup {
+    left: 10px !important;
+    top: 10px !important;
+    max-width: calc(100% - 20px) !important;
+    padding: 8px !important;
+  }
+  .title-lockup h1 {
+    font-size: 14px !important;
+  }
+  .title-lockup p {
+    display: none !important; /* Hide subtitle to save space */
+  }
+
+  /* Status strip adjustment - make it fit or stack */
+  .status-strip {
+    right: 10px !important;
+    top: 75px !important; /* Move below header */
+    left: 10px !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 6px 10px !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    justify-content: space-between !important;
+    font-size: 10px !important;
+  }
+  .status-strip span:nth-child(4),
+  .status-strip span:nth-child(5) {
+    display: none !important; /* Hide cell count and data source on mobile */
+  }
+
+  /* Mobile floating toggles row */
+  .mobile-toggle-bar {
+    position: absolute;
+    z-index: 15;
+    left: 10px;
+    bottom: 140px;
+    display: flex !important;
+    gap: 8px;
+  }
+  .mobile-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(3, 12, 22, 0.88);
+    border: 1px solid rgba(178, 218, 255, 0.25);
+    color: #ffffff;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    transition: all 0.2s ease;
+  }
+  .mobile-toggle-btn.active {
+    background: var(--accent-color, #1a75ff);
+    border-color: var(--accent-color, #1a75ff);
+    box-shadow: 0 0 10px var(--accent-color, #1a75ff);
+  }
+
+  /* Adjust panels display and width based on toggle states */
+  .scenario-sidebar {
+    left: 10px !important;
+    top: 120px !important;
+    width: calc(100% - 20px) !important;
+    max-height: calc(100vh - 280px) !important;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(15px);
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .scenario-sidebar.mobile-open {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(0) !important;
+  }
+
+  .rank-panel,
+  .typhoon-board-panel {
+    right: 10px !important;
+    left: 10px !important;
+    bottom: 190px !important;
+    width: auto !important;
+    max-height: calc(100vh - 350px) !important;
+    overflow-y: auto !important;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(15px);
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .rank-panel.mobile-open,
+  .typhoon-board-panel.mobile-open {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(0) !important;
+  }
+
+  /* Control dock and timebar adjustments for mobile */
+  .control-dock {
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 8px !important;
+    display: flex !important;
+    justify-content: space-around !important;
+    gap: 4px !important;
+  }
+  .control-dock button {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .timebar-panel {
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 74px !important;
+    width: auto !important;
+    transform: none !important;
+    padding: 8px !important;
+  }
+  .timebar-panel.collapsed {
+    min-height: 0 !important;
+  }
+  .trend-chart-wrapper {
+    height: 36px !important;
+  }
 }

@@ -45,7 +45,7 @@ export type DisasterScenario = {
   metric: string
   updatedAt: string
   source: string
-  kmaCategory?: 'T1H' | 'RN1'
+  vhwisCategory?: 'T1H' | 'RN1'
   maxValue: number
   minValue: number
   gridCellSizeMeters: number
@@ -287,7 +287,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '기온',
     updatedAt: '2026.06.04 14:00',
     source: 'CF-VHWIS',
-    kmaCategory: 'T1H',
+    vhwisCategory: 'T1H',
     maxValue: 45,
     minValue: 10,
     gridCellSizeMeters: 5200,
@@ -314,7 +314,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '상대습도',
     updatedAt: '2026.06.04 14:00',
     source: 'CF-VHWIS',
-    kmaCategory: 'T1H',
+    vhwisCategory: 'T1H',
     maxValue: 100,
     minValue: 0,
     gridCellSizeMeters: 5200,
@@ -341,7 +341,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '풍속',
     updatedAt: '2026.06.04 14:00',
     source: 'CF-VHWIS',
-    kmaCategory: 'T1H',
+    vhwisCategory: 'T1H',
     maxValue: 25,
     minValue: 0,
     gridCellSizeMeters: 5400,
@@ -420,7 +420,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '강수량',
     updatedAt: '2026.06.04 14:00',
     source: 'CF-VHWIS',
-    kmaCategory: 'RN1',
+    vhwisCategory: 'RN1',
     maxValue: 200,
     minValue: 0,
     gridCellSizeMeters: 5200,
@@ -503,7 +503,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '예측 강수량',
     updatedAt: '2026.06.04 14:00 (예보)',
     source: 'CF-VHWIS 예보',
-    maxValue: 200,
+    maxValue: 25,
     minValue: 0,
     gridCellSizeMeters: 5200,
     bearing: 0,
@@ -687,7 +687,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '대기질',
     updatedAt: '2026.06.04 14:00',
     source: 'CF-VHWIS',
-    kmaCategory: 'T1H',
+    vhwisCategory: 'T1H',
     maxValue: 300,
     minValue: 0,
     gridCellSizeMeters: 5500,

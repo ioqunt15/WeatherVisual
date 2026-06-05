@@ -1,6 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import { createKmaCacheMiddleware, scheduleKmaCacheWarmup } from './server/kmaCache'
+import { createVhwisCacheMiddleware, scheduleVhwisCacheWarmup } from './server/kmaCache'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -10,10 +10,10 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       {
-        name: 'kma-weather-cache',
+        name: 'vhwis-weather-cache',
         configureServer(server) {
-          server.middlewares.use(createKmaCacheMiddleware(env.VITE_KMA_AUTH_KEY))
-          const stopWarmup = scheduleKmaCacheWarmup(env.VITE_KMA_AUTH_KEY)
+          server.middlewares.use(createVhwisCacheMiddleware(env.VITE_KMA_AUTH_KEY))
+          const stopWarmup = scheduleVhwisCacheWarmup(env.VITE_KMA_AUTH_KEY)
           server.httpServer?.once('close', stopWarmup)
         },
       },
