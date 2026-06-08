@@ -2054,17 +2054,86 @@
     border-radius: 2px !important;
   }
   
-  .typhoon-stats-grid {
+  /* 태풍 상세 패널 모바일 컴팩트 스타일 개편 */
+  .typhoon-board-panel {
+    width: 240px !important; /* 가로폭을 살짝 늘려 공간 확보 */
+    max-height: 290px !important;
+  }
+  .typhoon-board-panel .typhoon-board-body {
+    padding: 6px 8px 8px !important;
+    max-height: 230px !important; /* 바디 스크롤 영역을 살짝 키워서 시각적 조화 유도 */
     gap: 6px !important;
   }
-  .typhoon-stat-item {
-    padding: 4px !important;
+  .typhoon-name-row {
+    gap: 6px !important;
+    padding-bottom: 4px !important;
+    align-items: center !important;
   }
-  .stat-label {
+  .typhoon-name-row h3 {
+    font-size: 11px !important;
+    font-weight: 900 !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .typhoon-board-panel .danger-badge {
     font-size: 8px !important;
+    padding: 2px 4px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    border-radius: 2px !important;
+    background: #ff1744 !important;
+    line-height: 1.2 !important;
   }
-  .stat-value {
-    font-size: 10.5px !important;
+  .typhoon-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 4px !important;
+  }
+  .typhoon-board-panel .typhoon-stat-item {
+    padding: 3px 5px !important;
+    border-left: 2px solid #ff1744 !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+  }
+  .typhoon-board-panel .stat-label {
+    font-size: 7.5px !important;
+    font-weight: 700 !important;
+    color: rgba(220, 235, 255, 0.6) !important;
+  }
+  .typhoon-board-panel .stat-value {
+    font-size: 9px !important;
+    font-weight: 850 !important;
+    margin-top: 1px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .typhoon-board-panel .typhoon-warning-box {
+    padding: 5px 6px !important;
+    border-radius: 3px !important;
+    background: rgba(255, 23, 68, 0.08) !important;
+    border: 1px solid rgba(255, 23, 68, 0.2) !important;
+    margin-top: 2px !important;
+  }
+  .typhoon-board-panel .typhoon-warning-box strong {
+    font-size: 9px !important;
+    color: #ff5252 !important;
+    font-weight: 900 !important;
+  }
+  .typhoon-board-panel .typhoon-warning-box p {
+    font-size: 8px !important;
+    line-height: 1.3 !important;
+    margin-top: 2px !important;
+  }
+  .typhoon-board-panel .wind-overlay-row label {
+    font-size: 9px !important;
+  }
+  /* 복귀 버튼 소형화 */
+  .typhoon-board-panel .typhoon-board-body button {
+    padding: 4px 8px !important;
+    font-size: 9.5px !important;
+    margin-top: 2px !important;
   }
 
   /* Mobile Map Options Sheet (Bottom Sheet로 유지) */
@@ -2287,7 +2356,7 @@
     align-items: center !important;
     gap: 6px !important; /* 모바일에서 요소 간 간격 6px로 조율 */
     width: 100% !important;
-    overflow: hidden !important; /* 박스 밖으로 튀어나가지 않도록 강제 */
+    overflow: visible !important; /* 3초 팝업창 노출을 위해 overflow 허용 */
   }
   .timeline-meta {
     min-width: 0 !important;
@@ -2308,13 +2377,8 @@
     font-size: 10px !important;
     line-height: 1.2 !important;
   }
-  .timeline-meta span {
-    display: block !important; /* Ensure it is visible */
-    font-size: 7.5px !important;
-    color: rgba(218, 234, 251, 0.74) !important;
-    font-weight: 700 !important;
-    margin-top: 1px !important;
-    line-height: 1.1 !important;
+  .timeline-meta > span {
+    display: none !important; /* 타임바 옆에는 Thực tế 15:00만 노출하도록 상세 시간 숨김 */
   }
   .timeline-meta-popup {
     position: absolute !important;
@@ -2355,15 +2419,18 @@
     width: 12px !important;
     height: 12px !important;
   }
-  .timeline-play {
+  .timeline-play,
+  .timeline-play:disabled {
     width: 24px !important;
     height: 24px !important;
     min-width: 24px !important;
+    min-height: 0 !important; /* 데스크톱 min-height: 32px 상속 해제하여 완전한 원형 보장 */
     padding: 0 !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     border-radius: 50% !important;
+    border: none !important;
   }
   .selected-station-badge {
     font-size: 9px !important;
