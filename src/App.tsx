@@ -1477,6 +1477,42 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileBoardOpen, setMobileBoardOpen] = useState(false)
   const [mobileMapOptionsOpen, setMobileMapOptionsOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  const [showTimebarMetaPopup, setShowTimebarMetaPopup] = useState(false)
+  const metaPopupTimeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (metaPopupTimeoutRef.current) {
+        window.clearTimeout(metaPopupTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleMetaClick = () => {
+    if (window.innerWidth > 768) return
+
+    if (metaPopupTimeoutRef.current) {
+      window.clearTimeout(metaPopupTimeoutRef.current)
+      metaPopupTimeoutRef.current = null
+    }
+
+    if (showTimebarMetaPopup) {
+      setShowTimebarMetaPopup(false)
+    } else {
+      setShowTimebarMetaPopup(true)
+      metaPopupTimeoutRef.current = window.setTimeout(() => {
+        setShowTimebarMetaPopup(false)
+        metaPopupTimeoutRef.current = null
+      }, 3000)
+    }
+  }
+
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     observation: true,
     forecast: false,
@@ -3641,52 +3677,33 @@ function App() {
         {/* Mobile Unified Header */}
         {!shortcutChromeHidden && (
           <header className="mobile-header">
-            <div className="mobile-header-brand">
+            <button
+              type="button"
+              className="mobile-header-menu-btn"
+              onClick={() => {
+                setMobileMenuOpen(!mobileMenuOpen)
+                setMobileBoardOpen(false)
+                setMobileMapOptionsOpen(false)
+              }}
+              title={translations[lang]['scenario_title'] || 'Menu'}
+            >
+              <Menu size={20} />
+            </button>
+            <div className="mobile-header-center">
               <span className="brand-mark">VHWIS</span>
-              <span className="brand-sub">WEATHER AI</span>
             </div>
-            <div className="mobile-header-title">
-              {translations[lang][scenario.id] || scenario.title}
-            </div>
-            <div className="mobile-header-controls">
-              <button
-                type="button"
-                className="mobile-header-refresh"
-                onClick={() => {
-                  setIsTimelinePlaying(false)
-                  setFrameIndex(0)
-                  setColumnReveal(1)
-                  setDataStatus({ key: 'status_checking' })
-                  setRefreshNonce((value) => value + 1)
-                }}
-                title={translations[lang]['refresh'] || 'Refresh'}
-              >
-                <RotateCw size={13} />
-              </button>
-              <div className="mobile-lang-selector">
-                <button
-                  type="button"
-                  className={`mobile-lang-btn ${lang === 'vi' ? 'active' : ''}`}
-                  onClick={() => setLang('vi')}
-                >
-                  VI
-                </button>
-                <button
-                  type="button"
-                  className={`mobile-lang-btn ${lang === 'en' ? 'active' : ''}`}
-                  onClick={() => setLang('en')}
-                >
-                  EN
-                </button>
-                <button
-                  type="button"
-                  className={`mobile-lang-btn ${lang === 'ko' ? 'active' : ''}`}
-                  onClick={() => setLang('ko')}
-                >
-                  KO
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              className={`mobile-header-layers-btn ${mobileMapOptionsOpen ? 'active' : ''}`}
+              onClick={() => {
+                setMobileMapOptionsOpen(!mobileMapOptionsOpen)
+                setMobileMenuOpen(false)
+                setMobileBoardOpen(false)
+              }}
+              title={lang === 'ko' ? '레이어' : lang === 'vi' ? 'Lớp bản đồ' : 'Layers'}
+            >
+              <Layers size={20} />
+            </button>
           </header>
         )}
 
@@ -4206,20 +4223,32 @@ function App() {
         )}
 
         {overlayVisibility.legend && (
-          <div className="legend" aria-label="범례">
+          <div className={`legend ${isMobile ? 'mobile-vertical' : ''}`} aria-label="범례">
             <div className="legend-labels">
               {legendTicks.map((tick, index) => (
                 <span
                   key={`${tick.position}-${tick.label}`}
-                  style={{
-                    left: `${tick.position}%`,
-                    transform:
-                      index === 0
-                        ? 'translateX(0)'
-                        : index === legendTicks.length - 1
-                          ? 'translateX(-100%)'
-                          : 'translateX(-50%)',
-                  }}
+                  style={
+                    isMobile
+                      ? {
+                          bottom: `${tick.position}%`,
+                          transform:
+                            index === 0
+                              ? 'translateY(50%)'
+                              : index === legendTicks.length - 1
+                                ? 'translateY(-50%)'
+                                : 'translateY(50%)',
+                        }
+                      : {
+                          left: `${tick.position}%`,
+                          transform:
+                            index === 0
+                              ? 'translateX(0)'
+                              : index === legendTicks.length - 1
+                                ? 'translateX(-100%)'
+                                : 'translateX(-50%)',
+                        }
+                  }
                 >
                   {tick.label}
                 </span>
@@ -4227,7 +4256,11 @@ function App() {
             </div>
             <div
               className="legend-ramp"
-              style={{ gridTemplateColumns: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }}
+              style={
+                isMobile
+                  ? { gridTemplateRows: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }
+                  : { gridTemplateColumns: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }
+              }
             >
               {activeScenario.palette.map(([stop, color]) => (
                 <i key={stop} style={{ backgroundColor: color }} />
@@ -4259,48 +4292,22 @@ function App() {
         )}
 
         {!shortcutChromeHidden && (
-          <div className="mobile-toggle-bar">
-            <button 
-              type="button" 
-              className={`mobile-toggle-btn ${mobileMenuOpen ? 'active' : ''}`}
-              onClick={() => {
-                setMobileMenuOpen(!mobileMenuOpen)
-                setMobileBoardOpen(false)
-                setMobileMapOptionsOpen(false)
-              }}
-            >
-              <Menu size={14} />
-              <span>{lang === 'ko' ? '메뉴' : lang === 'vi' ? 'Menu' : 'Menu'}</span>
-            </button>
-            <button 
-              type="button" 
-              className={`mobile-toggle-btn ${mobileBoardOpen ? 'active' : ''}`}
-              onClick={() => {
-                setMobileBoardOpen(!mobileBoardOpen)
-                setMobileMenuOpen(false)
-                setMobileMapOptionsOpen(false)
-              }}
-            >
-              <Sliders size={14} />
-              <span>
-                {activeScenario.id === 'typhoon' 
-                  ? (lang === 'ko' ? '태풍' : lang === 'vi' ? 'Bão' : 'Typhoon')
-                  : (lang === 'ko' ? '순위' : lang === 'vi' ? 'Bảng xếp hạng' : 'Ranks')}
-              </span>
-            </button>
-            <button 
-              type="button" 
-              className={`mobile-toggle-btn ${mobileMapOptionsOpen ? 'active' : ''}`}
-              onClick={() => {
-                setMobileMapOptionsOpen(!mobileMapOptionsOpen)
-                setMobileMenuOpen(false)
-                setMobileBoardOpen(false)
-              }}
-            >
-              <Layers size={14} />
-              <span>{lang === 'ko' ? '레이어' : lang === 'vi' ? 'Lớp bản đồ' : 'Layers'}</span>
-            </button>
-          </div>
+          <button 
+            type="button" 
+            className={`mobile-rank-toggle-btn ${mobileBoardOpen ? 'active' : ''}`}
+            onClick={() => {
+              setMobileBoardOpen(!mobileBoardOpen)
+              setMobileMenuOpen(false)
+              setMobileMapOptionsOpen(false)
+            }}
+            title={
+              activeScenario.id === 'typhoon' 
+                ? (lang === 'ko' ? '태풍' : lang === 'vi' ? 'Bão' : 'Typhoon')
+                : (lang === 'ko' ? '순위' : lang === 'vi' ? 'Bảng xếp hạng' : 'Ranks')
+            }
+          >
+            {activeScenario.id === 'typhoon' ? <Sliders size={14} /> : <BarChart3 size={14} />}
+          </button>
         )}
 
         {/* Mobile Map Options Sheet */}
@@ -4318,6 +4325,34 @@ function App() {
             </div>
             
             <div className="mobile-sheet-body">
+              {/* 0. Language Selection */}
+              <div className="mobile-option-group">
+                <h4>{translations[lang]['languageLabel'] || (lang === 'ko' ? '언어 설정' : lang === 'vi' ? 'Cài đặt ngôn ngữ' : 'Language')}</h4>
+                <div className="mobile-capsule-row">
+                  <button
+                    type="button"
+                    className={`mobile-capsule-btn ${lang === 'vi' ? 'active' : ''}`}
+                    onClick={() => setLang('vi')}
+                  >
+                    Tiếng Việt (VI)
+                  </button>
+                  <button
+                    type="button"
+                    className={`mobile-capsule-btn ${lang === 'en' ? 'active' : ''}`}
+                    onClick={() => setLang('en')}
+                  >
+                    English (EN)
+                  </button>
+                  <button
+                    type="button"
+                    className={`mobile-capsule-btn ${lang === 'ko' ? 'active' : ''}`}
+                    onClick={() => setLang('ko')}
+                  >
+                    한국어 (KO)
+                  </button>
+                </div>
+              </div>
+              
               {/* 1. Map Theme Selection */}
               <div className="mobile-option-group">
                 <h4>{lang === 'ko' ? '지도 스타일' : lang === 'vi' ? 'Kiểu bản đồ' : 'Map Style'}</h4>
@@ -4397,6 +4432,22 @@ function App() {
           <>
             {overlayVisibility.timeline && timeline.length >= 1 && (
               <div className={`timebar-panel ${isTimebarExpanded ? '' : 'collapsed'}`} aria-label="기상 정보 시간 선택">
+                {isMobile && (
+                  <button
+                    type="button"
+                    className="timebar-mobile-refresh"
+                    onClick={() => {
+                      setIsTimelinePlaying(false)
+                      setFrameIndex(0)
+                      setColumnReveal(1)
+                      setDataStatus({ key: 'status_checking' })
+                      setRefreshNonce((value) => value + 1)
+                    }}
+                    title={translations[lang]['refresh'] || 'Refresh'}
+                  >
+                    <RotateCw size={13} />
+                  </button>
+                )}
                 {(() => {
                   const totalSteps = timeline.length > 1 ? timeline.length - 1 : 1;
                   const maxInTrend = Math.max(...selectedTrendData.map((d) => d.value), 0);
@@ -4536,9 +4587,14 @@ function App() {
                   {(() => {
                     const { local, utc } = formatTimebarLabel(activeFrame?.updatedAt ?? activeScenario.updatedAt);
                     return (
-                      <div className="timeline-meta">
+                      <div className="timeline-meta" onClick={handleMetaClick} style={{ cursor: isMobile ? 'pointer' : 'default' }}>
                         <strong>{translateLiveText(activeFrame?.label ?? '샘플', lang)}</strong>
-                        <span>{local} {utc && `| ${utc}`}</span>
+                        {!isMobile && <span>{local} {utc && `| ${utc}`}</span>}
+                        {isMobile && showTimebarMetaPopup && (
+                          <div className="timeline-meta-popup">
+                            <span>{local} {utc && `| ${utc}`}</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -4554,15 +4610,17 @@ function App() {
                       setIsTimelinePlaying(false)
                     }}
                   />
-                  <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>
-                  <button
-                    type="button"
-                    className="timebar-toggle"
-                    onClick={() => setIsTimebarExpanded((prev) => !prev)}
-                    title={isTimebarExpanded ? "차트 접기" : "차트 펼치기"}
-                  >
-                    {isTimebarExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                  </button>
+                  {!isMobile && <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>}
+                  {!isMobile && (
+                    <button
+                      type="button"
+                      className="timebar-toggle"
+                      onClick={() => setIsTimebarExpanded((prev) => !prev)}
+                      title={isTimebarExpanded ? "차트 접기" : "차트 펼치기"}
+                    >
+                      {isTimebarExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

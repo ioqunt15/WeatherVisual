@@ -1699,9 +1699,10 @@
     display: none !important; /* Hide old status strip completely */
   }
 
-  /* Mobile Unified Navigation Header */
+  /* Mobile Unified Navigation Header - 3단 배치 (메뉴, 로고, 레이어) */
   .mobile-header {
-    display: flex !important;
+    display: grid !important;
+    grid-template-columns: 50px 1fr 50px !important;
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
@@ -1713,127 +1714,57 @@
     border-bottom: 1px solid rgba(178, 218, 255, 0.15) !important;
     z-index: 100 !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    padding: 0 12px !important;
-  }
-  .mobile-header-brand {
-    display: flex !important;
-    flex-direction: column !important;
     justify-content: center !important;
-    gap: 0px !important;
-  }
-  .mobile-header-brand .brand-mark {
-    font-size: 13px !important;
-    font-weight: 900 !important;
-    color: #ffffff !important;
-    letter-spacing: 0.05em !important;
-    line-height: 1.1 !important;
-  }
-  .mobile-header-brand .brand-sub {
-    font-size: 8px !important;
-    font-weight: 700 !important;
-    color: var(--accent-color, #1a75ff) !important;
-    letter-spacing: 0.12em !important;
-    opacity: 0.9 !important;
-    line-height: 1 !important;
-  }
-  .mobile-header-title {
-    font-size: 12px !important;
-    font-weight: 800 !important;
-    color: #ffffff !important;
-    text-align: center !important;
-    max-width: 42% !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5) !important;
-  }
-  .mobile-header-controls {
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-  }
-  .mobile-header-refresh {
-    width: 28px !important;
-    height: 28px !important;
-    border-radius: 50% !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.16) !important;
-    color: #ffffff !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    cursor: pointer !important;
-    transition: background 0.2s ease !important;
-  }
-  .mobile-header-refresh:active {
-    background: rgba(255, 255, 255, 0.2) !important;
-  }
-  .mobile-lang-selector {
-    display: flex !important;
-    background: rgba(3, 12, 22, 0.6) !important;
-    border: 1px solid rgba(178, 218, 255, 0.12) !important;
-    border-radius: 14px !important;
-    padding: 2px !important;
-    gap: 1px !important;
-  }
-  .mobile-lang-btn {
-    font-size: 9px !important;
-    font-weight: 800 !important;
-    padding: 3px 6px !important;
-    border-radius: 12px !important;
-    border: none !important;
-    background: transparent !important;
-    color: rgba(255, 255, 255, 0.55) !important;
-    cursor: pointer !important;
-    transition: all 0.2s ease !important;
-  }
-  .mobile-lang-btn.active {
-    background: #f4f9ff !important;
-    color: #030c16 !important;
+    padding: 0 8px !important;
   }
 
-  /* Mobile floating toggles row */
-  .mobile-toggle-bar {
-    position: absolute !important;
-    z-index: 15 !important;
-    left: 12px !important;
-    right: 12px !important;
-    top: 66px !important;
-    bottom: auto !important;
-    display: flex !important;
-    gap: 6px !important;
-  }
-  .mobile-toggle-btn {
-    flex: 1 !important;
+  .mobile-header-menu-btn,
+  .mobile-header-layers-btn {
+    background: transparent !important;
+    border: none !important;
+    color: #ffffff !important;
+    cursor: pointer !important;
+    width: 38px !important;
+    height: 38px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 6px !important;
-    background: rgba(4, 12, 22, 0.84) !important;
-    backdrop-filter: blur(12px) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(178, 218, 255, 0.18) !important;
-    color: #e2f0fd !important;
-    padding: 8px 0 !important;
-    font-size: 11px !important;
-    font-weight: 800 !important;
-    border-radius: 6px !important;
-    cursor: pointer !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
-    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    transition: background 0.2s ease !important;
+    border-radius: 4px !important;
   }
-  .mobile-toggle-btn.active {
-    background: var(--accent-color, #1a75ff) !important;
-    border-color: var(--accent-color, #1a75ff) !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 12px rgba(26, 117, 255, 0.45) !important;
+  .mobile-header-menu-btn:active,
+  .mobile-header-layers-btn:active {
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .mobile-header-center {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  .mobile-header-center .brand-mark {
+    background: transparent !important; /* 배경 없앰 */
+    color: #ffffff !important; /* 흰색 폰트 유지 */
+    font-size: 18px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.08em !important;
+    padding: 0 !important;
+    display: inline-block !important;
+  }
+
+  .mobile-header-brand {
+    display: none !important;
+  }
+
+  .mobile-header-title {
+    display: none !important;
   }
 
   /* Left drawer sliding animation for scenario selector */
   .scenario-sidebar {
     position: absolute !important;
-    z-index: 20 !important;
+    z-index: 200 !important;
     left: 0 !important;
     top: 54px !important;
     bottom: 0 !important;
@@ -1904,12 +1835,120 @@
     font-size: 11px !important;
   }
 
-  /* Bottom sheet sliding animation for rankings / typhoon board */
+  /* 모바일 플로팅 순위 버튼 스타일링 (34x34px, 우상단 플로팅) */
+  .mobile-rank-toggle-btn {
+    position: absolute !important;
+    z-index: 15 !important;
+    right: 12px !important;
+    top: 120px !important;
+    width: 34px !important;
+    height: 34px !important;
+    background: rgba(4, 12, 22, 0.84) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(178, 218, 255, 0.22) !important;
+    color: #e2f0fd !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  }
+  .mobile-rank-toggle-btn.active {
+    background: var(--accent-color, #1a75ff) !important;
+    border-color: var(--accent-color, #1a75ff) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(26, 117, 255, 0.45) !important;
+  }
+
+  /* 순위표 & 태풍 정보 패널 - 우측 컴팩트 플로팅 구조 */
   .rank-panel,
-  .typhoon-board-panel,
-  .mobile-map-options-sheet {
+  .typhoon-board-panel {
     position: absolute !important;
     z-index: 20 !important;
+    right: 54px !important; /* 버튼(right 12px + width 34px) 왼쪽에 살짝 여백 */
+    top: 120px !important; /* 버튼 높이와 정렬 */
+    bottom: auto !important;
+    left: auto !important;
+    width: 220px !important;
+    height: auto !important;
+    max-height: 260px !important;
+    background: rgba(4, 12, 22, 0.9) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(178, 218, 255, 0.22) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: scale(0.95) translate(10px, 0) !important;
+    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    overflow-y: auto !important;
+  }
+  .rank-panel.mobile-open,
+  .typhoon-board-panel.mobile-open {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: scale(1) translate(0, 0) !important;
+  }
+
+  .typhoon-board-panel {
+    width: 235px !important; /* 태풍 보드는 텍스트 크기를 고려하여 소폭 넓게 */
+    max-height: 280px !important;
+  }
+
+  /* 패널 슬라이딩 시트 장식 숨김 */
+  .rank-panel .mobile-sheet-drag-handle,
+  .typhoon-board-panel .mobile-sheet-drag-handle,
+  .rank-panel .mobile-sheet-close,
+  .typhoon-board-panel .mobile-sheet-close {
+    display: none !important;
+  }
+
+  .rank-panel .panel-heading,
+  .typhoon-board-panel .panel-heading {
+    padding: 8px 12px !important;
+    border-bottom: 1px solid rgba(178, 218, 255, 0.1) !important;
+    background: transparent !important;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+  }
+  .rank-panel .panel-heading span,
+  .typhoon-board-panel .panel-heading span {
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+  }
+
+  .rank-panel .rank-row-container {
+    padding: 6px 12px !important;
+  }
+  .typhoon-board-panel .typhoon-board-body {
+    padding: 8px 12px 12px !important;
+    overflow-y: auto !important;
+  }
+  
+  .typhoon-stats-grid {
+    gap: 6px !important;
+  }
+  .typhoon-stat-item {
+    padding: 4px !important;
+  }
+  .stat-label {
+    font-size: 8px !important;
+  }
+  .stat-value {
+    font-size: 10.5px !important;
+  }
+
+  /* Mobile Map Options Sheet (Bottom Sheet로 유지) */
+  .mobile-map-options-sheet {
+    position: absolute !important;
+    z-index: 200 !important;
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
@@ -1932,13 +1971,10 @@
     transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
     overflow: hidden !important;
   }
-  .rank-panel.mobile-open,
-  .typhoon-board-panel.mobile-open,
   .mobile-map-options-sheet.mobile-open {
     transform: translateY(0) !important;
   }
 
-  /* Drag handle visual cue */
   .mobile-sheet-drag-handle {
     display: block !important;
     width: 36px !important;
@@ -1949,9 +1985,6 @@
     flex-shrink: 0 !important;
   }
 
-  /* Bottom sheet headings */
-  .rank-panel .panel-heading,
-  .typhoon-board-panel .panel-heading,
   .mobile-map-options-sheet .panel-heading {
     display: flex !important;
     justify-content: space-between !important;
@@ -1962,8 +1995,6 @@
     margin: 0 !important;
     flex-shrink: 0 !important;
   }
-  .rank-panel .panel-heading span,
-  .typhoon-board-panel .panel-heading span,
   .mobile-map-options-sheet .panel-heading span {
     font-size: 12px !important;
     font-weight: 800 !important;
@@ -1979,19 +2010,6 @@
     cursor: pointer !important;
   }
 
-  /* Bottom sheet scrolling body */
-  .rank-panel .rank-row-container {
-    padding: 8px 16px !important;
-  }
-  .typhoon-board-panel .typhoon-board-body {
-    padding: 12px 16px 20px !important;
-    overflow-y: auto !important;
-  }
-  .rank-panel {
-    overflow-y: auto !important;
-  }
-
-  /* Map Options Sheet Body & Form styling */
   .mobile-map-options-sheet .mobile-sheet-body {
     padding: 14px 16px 24px !important;
     overflow-y: auto !important;
@@ -2074,107 +2092,204 @@
     cursor: pointer !important;
   }
 
-  /* Timebar panel bottom layout placement */
+  /* 새로고침 버튼 - 타임바 우상단 바로 위 플로팅 배치 */
+  .timebar-mobile-refresh {
+    position: absolute !important;
+    top: -36px !important;
+    right: 0px !important;
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 50% !important;
+    background: rgba(3, 12, 22, 0.88) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(178, 218, 255, 0.16) !important;
+    color: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;
+    z-index: 10 !important;
+  }
+
+  /* 타임바 패널 - 세로 높이 20% 축소 (96px 고정) */
   .timebar-panel {
     left: 8px !important;
     right: 8px !important;
     bottom: 8px !important;
     width: auto !important;
     transform: none !important;
-    padding: 8px 10px !important;
+    padding: 6px 8px !important;
     background: rgba(3, 12, 22, 0.88) !important;
     backdrop-filter: blur(16px) !important;
     -webkit-backdrop-filter: blur(16px) !important;
     border-radius: 8px !important;
     border: 1px solid rgba(178, 218, 255, 0.12) !important;
     z-index: 5 !important;
-    min-height: 0 !important;
-    height: auto !important;
+    height: 96px !important;
     box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
-  }
-  .timebar-panel.collapsed {
-    min-height: 0 !important;
-    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
   }
 
-  /* SVG chart stretch inside bottom sheet */
+  /* 추이 차트 영역 크기 축소 */
   .trend-chart-wrapper {
-    height: 42px !important;
-    margin-top: 4px !important;
+    height: 32px !important;
+    margin-top: 2px !important;
     border-radius: 4px !important;
+    position: relative !important;
+  }
+  .trend-chart-wrapper span {
+    font-size: 8.5px !important;
+    bottom: 5px !important;
   }
   .timebar-axis-row {
-    height: 12px !important;
-    margin-top: 3px !important;
+    height: 10px !important;
+    margin-top: 1px !important;
     margin-bottom: 2px !important;
   }
   .timebar-axis-row span {
     font-size: 8px !important;
   }
 
-  /* Timebar play row & Meta info details */
+  /* 타임바 컨트롤 및 메타 정보 팝업화 */
   .timebar-controls-row {
-    margin-top: 4px !important;
-    gap: 6px !important;
+    margin-top: 2px !important;
+    height: 26px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
   }
   .timeline-meta {
     min-width: 0 !important;
-    flex: 1 !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    padding: 3px 6px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
   }
   .timeline-meta strong {
     font-size: 10px !important;
     line-height: 1.2 !important;
   }
   .timeline-meta span {
-    font-size: 8px !important;
-    line-height: 1 !important;
+    display: none !important; /* 메타 상세 시간 정보는 가림 */
+  }
+  .timeline-meta-popup {
+    position: absolute !important;
+    bottom: 44px !important; /* 메타 라벨 위에 배치 */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    background: rgba(3, 12, 22, 0.94) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(178, 218, 255, 0.22) !important;
+    padding: 6px 10px !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5) !important;
+    z-index: 100 !important;
+    animation: fadeIn 0.2s ease-out !important;
+  }
+  .timeline-meta-popup span {
+    display: block !important;
+    font-size: 9px !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translate(-50%, 5px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  /* 슬라이더 가로폭 최대 확장 */
+  .timebar-controls-row input[type="range"] {
+    flex: 1 !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    height: 4px !important;
+  }
+  .timebar-controls-row input[type="range"]::-webkit-slider-thumb {
+    width: 12px !important;
+    height: 12px !important;
   }
   .timeline-play {
-    width: 28px !important;
-    height: 28px !important;
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
     padding: 0 !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     border-radius: 50% !important;
   }
-  .timeline-slider {
-    height: 4px !important;
+  .selected-station-badge {
+    font-size: 9px !important;
+    padding: 1px 4px !important;
   }
-  .timeline-slider::-webkit-slider-thumb {
-    width: 12px !important;
-    height: 12px !important;
+  .timeline-source {
+    display: none !important;
   }
 
-  /* Map Legends positioning */
+  /* 세로형 범례 (Vertical Legend) - 우측 수직 배치 */
   .legend {
     position: absolute !important;
     left: auto !important;
-    right: 8px !important;
-    bottom: 64px !important; /* Move above the collapsed timebar */
-    width: 140px !important;
+    right: 12px !important;
+    top: 164px !important; /* 순위 버튼 아래 배치 */
+    bottom: auto !important;
+    width: 34px !important; /* 순위 버튼과 가로 폭 일치 */
+    height: 180px !important;
     background: rgba(3, 12, 22, 0.82) !important;
-    padding: 5px !important;
+    padding: 6px 4px !important;
     border: 1px solid rgba(178, 218, 255, 0.12) !important;
     border-radius: 4px !important;
-    font-size: 8px !important;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
-    z-index: 4 !important;
-    transition: bottom 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    z-index: 10 !important;
+    display: flex !important;
+    flex-direction: row-reverse !important; /* 램프가 우측, 텍스트가 좌측 */
+    gap: 4px !important;
+    transition: none !important;
   }
-  /* Move legend up when timebar is expanded to prevent overlap */
-  .broadcast-shell:not(.controls-hidden) .timebar-panel:not(.collapsed) ~ .legend {
-    bottom: 128px !important;
+  
+  .legend-ramp {
+    display: flex !important;
+    flex-direction: column-reverse !important; /* 아래가 최솟값, 위가 최댓값 */
+    width: 6px !important;
+    height: 100% !important;
+    border: none !important;
+    grid-template-columns: none !important;
+    grid-template-rows: none !important;
+    box-shadow: none !important;
+  }
+  .legend-ramp i {
+    flex: 1 !important;
+    width: 100% !important;
   }
 
   .legend-labels {
-    height: 10px !important;
-    margin-bottom: 2px !important;
+    position: relative !important;
+    width: 20px !important;
+    height: 100% !important;
   }
   .legend-labels span {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    text-align: right !important;
     font-size: 8px !important;
-  }
-  .legend-ramp {
-    height: 8px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    color: #eef7ff !important;
   }
 }
