@@ -1802,23 +1802,24 @@
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    gap: 1px !important;
+    gap: 0px !important;
   }
 
   .mobile-header-logo {
-    width: 28px !important;
+    width: 36px !important;
     height: auto !important;
     display: block !important;
-    filter: brightness(0) invert(1) !important; /* SVG를 흰색으로 */
+    filter: brightness(0) invert(1) !important;
     opacity: 0.92 !important;
+    margin-bottom: 1px !important;
   }
 
   .mobile-brand-text {
     background: transparent !important;
-    color: #ffffff !important;
-    font-size: 11px !important;
-    font-weight: 900 !important;
-    letter-spacing: 0.12em !important;
+    color: rgba(255,255,255,0.85) !important;
+    font-size: 9px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.18em !important;
     padding: 0 !important;
     display: inline-block !important;
     line-height: 1 !important;
@@ -1934,31 +1935,31 @@
     box-shadow: 0 0 12px rgba(26, 117, 255, 0.45) !important;
   }
 
-  /* 순위표 & 태풍 정보 패널 - 우측 컴팩트 플로팅 구조 (버튼 상단 66px과 정밀 일치) */
+  /* 순위표 & 태풍 정보 패널 - 우측 컴팩트 플로팅 구조 */
   .rank-panel,
   .typhoon-board-panel {
     position: absolute !important;
     z-index: 20 !important;
-    right: 54px !important; /* 버튼(right 12px + width 34px) 왼쪽에 살짝 여백 */
-    top: 66px !important; /* top: 120px -> 66px */
+    right: 54px !important;
+    top: 66px !important;
     bottom: auto !important;
     left: auto !important;
-    width: 220px !important;
+    width: 180px !important;
     height: auto !important;
-    max-height: 260px !important;
-    background: rgba(4, 12, 22, 0.9) !important;
+    max-height: 200px !important;
+    background: rgba(4, 12, 22, 0.92) !important;
     backdrop-filter: blur(16px) !important;
     -webkit-backdrop-filter: blur(16px) !important;
-    border: 1px solid rgba(178, 218, 255, 0.22) !important;
+    border: 1px solid rgba(178, 218, 255, 0.18) !important;
     border-radius: 8px !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
     display: flex !important;
     flex-direction: column !important;
     opacity: 0 !important;
     pointer-events: none !important;
     transform: scale(0.95) translate(10px, 0) !important;
     transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
-    overflow-y: auto !important;
+    overflow: hidden !important;
   }
   .rank-panel.mobile-open,
   .typhoon-board-panel.mobile-open {
@@ -1997,11 +1998,54 @@
   }
 
   .rank-panel .rank-row-container {
-    padding: 6px 12px !important;
+    padding: 3px 10px !important;
+  }
+  /* 순위 목록 영역을 스크롤 가능하게 - 헤더 아래 내용이 overflow시 */
+  .rank-panel > *:not(.panel-heading):not(.mobile-sheet-drag-handle) {
+    overflow-y: auto !important;
+    max-height: 148px !important;
   }
   .typhoon-board-panel .typhoon-board-body {
-    padding: 8px 12px 12px !important;
+    padding: 6px 10px 10px !important;
     overflow-y: auto !important;
+    max-height: 148px !important;
+  }
+
+  /* 모바일 순위 패널 폰트 소형화 (기본 .rank-row 스타일 고정 오버라이드) */
+  .rank-panel .rank-row {
+    gap: 5px !important;
+    min-height: 22px !important;
+  }
+  .rank-panel .rank-row > span {
+    font-size: 9px !important;
+  }
+  .rank-panel .rank-row > b {
+    font-size: 10px !important;
+  }
+  .rank-panel .rank-row > strong {
+    font-size: 11px !important;
+  }
+  .rank-panel .rank-row > strong > small {
+    font-size: 8px !important;
+  }
+  .rank-panel .rank-bar-bg {
+    height: 2px !important;
+    margin-top: 2px !important;
+  }
+
+  /* 모던 슬림 스크롤바 */
+  .rank-panel > *:not(.panel-heading):not(.mobile-sheet-drag-handle)::-webkit-scrollbar,
+  .typhoon-board-panel .typhoon-board-body::-webkit-scrollbar {
+    width: 3px !important;
+  }
+  .rank-panel > *:not(.panel-heading):not(.mobile-sheet-drag-handle)::-webkit-scrollbar-track,
+  .typhoon-board-panel .typhoon-board-body::-webkit-scrollbar-track {
+    background: transparent !important;
+  }
+  .rank-panel > *:not(.panel-heading):not(.mobile-sheet-drag-handle)::-webkit-scrollbar-thumb,
+  .typhoon-board-panel .typhoon-board-body::-webkit-scrollbar-thumb {
+    background: rgba(178, 218, 255, 0.25) !important;
+    border-radius: 2px !important;
   }
   
   .typhoon-stats-grid {
@@ -2312,31 +2356,33 @@
     display: none !important;
   }
 
-  /* 세로형 범례 (Vertical Legend) - 우측 수직 배치 (순위 버튼 아래 110px 위치로 상향) */
+  /* 세로형 범례 (Vertical Legend) - 우측 벽면 부착, 레이블 좌측 위치 */
   .legend {
     position: absolute !important;
     left: auto !important;
-    right: 12px !important;
-    top: 110px !important; /* top: 164px -> 110px */
+    right: 0 !important;
+    top: 110px !important;
     bottom: auto !important;
-    width: 34px !important; /* 순위 버튼과 가로 폭 일치 */
+    width: 50px !important;
     height: 180px !important;
     background: rgba(3, 12, 22, 0.82) !important;
-    padding: 6px 4px !important;
+    padding: 6px 4px 6px 4px !important;
     border: 1px solid rgba(178, 218, 255, 0.12) !important;
-    border-radius: 4px !important;
+    border-radius: 4px 0 0 4px !important;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
     z-index: 10 !important;
     display: flex !important;
-    flex-direction: row-reverse !important; /* 램프가 우측, 텍스트가 좌측 */
-    gap: 4px !important;
+    flex-direction: row !important;
+    gap: 3px !important;
     transition: none !important;
+    overflow: visible !important;
   }
   
   .legend-ramp {
     display: flex !important;
-    flex-direction: column-reverse !important; /* 아래가 최솟값, 위가 최댓값 */
+    flex-direction: column-reverse !important;
     width: 6px !important;
+    flex-shrink: 0 !important;
     height: 100% !important;
     border: none !important;
     grid-template-columns: none !important;
@@ -2346,17 +2392,19 @@
   .legend-ramp i {
     flex: 1 !important;
     width: 100% !important;
+    height: auto !important;
   }
 
   .legend-labels {
     position: relative !important;
-    width: 20px !important;
+    flex: 1 !important;
     height: 100% !important;
+    overflow: visible !important;
   }
   .legend-labels span {
     position: absolute !important;
-    left: 0 !important;
     right: 0 !important;
+    left: 0 !important;
     text-align: right !important;
     font-size: 8px !important;
     line-height: 1 !important;

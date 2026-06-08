@@ -4227,12 +4227,14 @@ function App() {
                   style={
                     isMobile
                       ? {
-                          bottom: `${tick.position}%`,
+                          bottom: index === legendTicks.length - 1
+                            ? 'calc(100% - 10px)'
+                            : `${tick.position}%`,
                           transform:
                             index === 0
                               ? 'translateY(0%)'
                               : index === legendTicks.length - 1
-                                ? 'translateY(-100%)'
+                                ? 'translateY(0%)'
                                 : 'translateY(-50%)',
                         }
                       : {
@@ -4291,7 +4293,7 @@ function App() {
           </button>
         )}
 
-        {(mobileMenuOpen || mobileBoardOpen || mobileMapOptionsOpen) && (
+        {(mobileMenuOpen || mobileMapOptionsOpen) && (
           <div 
             className="mobile-drawer-backdrop show" 
             onClick={() => {
