@@ -1476,6 +1476,7 @@ function App() {
   const [showControls, setShowControls] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileBoardOpen, setMobileBoardOpen] = useState(false)
+  const [mobileMapOptionsOpen, setMobileMapOptionsOpen] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     observation: true,
     forecast: false,
@@ -2043,8 +2044,8 @@ function App() {
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: createMapStyle('satellite'),
-      center: [109.5, 15.0],
-      zoom: 4.8,
+      center: window.innerWidth <= 768 ? [108.8, 16.0] : [109.5, 15.0],
+      zoom: window.innerWidth <= 768 ? 4.1 : 4.8,
       pitch: 0,
       bearing: 0,
       attributionControl: false,
@@ -2427,7 +2428,7 @@ function App() {
             filter: ['!=', ['get', 'id'], selectedStationId],
             layout: {
               'icon-image': ['concat', 'station-callout-', ['get', 'id']],
-              'icon-size': 1.0,
+              'icon-size': window.innerWidth <= 768 ? 0.82 : 1.0,
               'icon-anchor': 'bottom',
               'icon-offset': [0, -4],
               'icon-allow-overlap': false,
@@ -2445,7 +2446,7 @@ function App() {
             filter: ['==', ['get', 'id'], selectedStationId],
             layout: {
               'icon-image': ['concat', 'station-callout-', ['get', 'id']],
-              'icon-size': 1.0,
+              'icon-size': window.innerWidth <= 768 ? 0.82 : 1.0,
               'icon-anchor': 'bottom',
               'icon-offset': [0, -4],
               'icon-allow-overlap': true,
@@ -2462,7 +2463,7 @@ function App() {
             source: 'regional-labels-source',
             layout: {
               'text-field': ['get', 'text'],
-              'text-size': 13.5,
+              'text-size': window.innerWidth <= 768 ? 10.5 : 13.5,
               'text-anchor': 'center',
               'text-allow-overlap': true,
               'text-ignore-placement': true,
@@ -3637,6 +3638,58 @@ function App() {
         <div className="map-vignette" />
         <div className="scanline" />
 
+        {/* Mobile Unified Header */}
+        {!shortcutChromeHidden && (
+          <header className="mobile-header">
+            <div className="mobile-header-brand">
+              <span className="brand-mark">VHWIS</span>
+              <span className="brand-sub">WEATHER AI</span>
+            </div>
+            <div className="mobile-header-title">
+              {translations[lang][scenario.id] || scenario.title}
+            </div>
+            <div className="mobile-header-controls">
+              <button
+                type="button"
+                className="mobile-header-refresh"
+                onClick={() => {
+                  setIsTimelinePlaying(false)
+                  setFrameIndex(0)
+                  setColumnReveal(1)
+                  setDataStatus({ key: 'status_checking' })
+                  setRefreshNonce((value) => value + 1)
+                }}
+                title={translations[lang]['refresh'] || 'Refresh'}
+              >
+                <RotateCw size={13} />
+              </button>
+              <div className="mobile-lang-selector">
+                <button
+                  type="button"
+                  className={`mobile-lang-btn ${lang === 'vi' ? 'active' : ''}`}
+                  onClick={() => setLang('vi')}
+                >
+                  VI
+                </button>
+                <button
+                  type="button"
+                  className={`mobile-lang-btn ${lang === 'en' ? 'active' : ''}`}
+                  onClick={() => setLang('en')}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  className={`mobile-lang-btn ${lang === 'ko' ? 'active' : ''}`}
+                  onClick={() => setLang('ko')}
+                >
+                  KO
+                </button>
+              </div>
+            </div>
+          </header>
+        )}
+
         {overlayVisibility.title && (
           <header className="title-lockup">
             <div className="brand-row">
@@ -3653,6 +3706,12 @@ function App() {
 
         {showControls && !shortcutChromeHidden && (
           <aside className={`scenario-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="기상 시나리오 선택">
+            <div className="mobile-drawer-header">
+              <h3>{translations[lang]['scenario_title'] || (lang === 'ko' ? '기상 시나리오' : lang === 'vi' ? 'Kịch bản thời tiết' : 'Weather Scenarios')}</h3>
+              <button type="button" className="mobile-drawer-close" onClick={() => setMobileMenuOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
             {categories.map((cat) => {
               const isExpanded = !!expandedCategories[cat.id]
               return (
@@ -3755,13 +3814,19 @@ function App() {
         {overlayVisibility.rank && !shortcutChromeHidden && (
           activeScenario.id === 'typhoon' ? (
             <aside className={`typhoon-board-panel ${mobileBoardOpen ? 'mobile-open' : ''}`} aria-label={lang === 'ko' ? '태풍 정보 보드' : lang === 'vi' ? 'Thông tin bão' : 'Typhoon Status Board'}>
+              <div className="mobile-sheet-drag-handle" />
               <div className="panel-heading">
-                <RotateCw size={15} className="spin-icon" style={{ animation: 'spin 4s linear infinite' }} />
-                <span>
-                  {selectedTyphoonId === 'live'
-                    ? (lang === 'ko' ? '실시간 태풍 감시' : lang === 'vi' ? 'GIÁM SÁT BÃO LIVE' : 'LIVE TYPHOON MONITORING')
-                    : (lang === 'ko' ? '과거 태풍 분석' : lang === 'vi' ? 'PHÂN TÍCH BÃO LỊCH SỬ' : 'HISTORICAL TYPHOON ANALYSIS')}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <RotateCw size={15} className="spin-icon" style={{ animation: 'spin 4s linear infinite' }} />
+                  <span>
+                    {selectedTyphoonId === 'live'
+                      ? (lang === 'ko' ? '실시간 태풍 감시' : lang === 'vi' ? 'GIÁM SÁT BÃO LIVE' : 'LIVE TYPHOON MONITORING')
+                      : (lang === 'ko' ? '과거 태풍 분석' : lang === 'vi' ? 'PHÂN TÍCH BÃO LỊCH SỬ' : 'HISTORICAL TYPHOON ANALYSIS')}
+                  </span>
+                </div>
+                <button type="button" className="mobile-sheet-close" onClick={() => setMobileBoardOpen(false)}>
+                  <X size={15} />
+                </button>
               </div>
               <div className="typhoon-board-body">
                 <div className="typhoon-search-board" style={{ borderBottom: '1px solid rgba(255, 23, 68, 0.25)', paddingBottom: '8px', marginBottom: '4px' }}>
@@ -3936,9 +4001,15 @@ function App() {
             </aside>
           ) : (
             <aside className={`rank-panel ${mobileBoardOpen ? 'mobile-open' : ''}`} aria-label={translations[lang]['rank'] || '주요 지점'}>
+              <div className="mobile-sheet-drag-handle" />
               <div className="panel-heading">
-                <BarChart3 size={15} />
-                <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <BarChart3 size={15} />
+                  <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
+                </div>
+                <button type="button" className="mobile-sheet-close" onClick={() => setMobileBoardOpen(false)}>
+                  <X size={15} />
+                </button>
               </div>
               {topPoints.map((point, index) => {
                 const valueColor = rgbaToCss(valueToSteppedColor(point.value, activeScenario.palette, 255));
@@ -4176,6 +4247,17 @@ function App() {
           </button>
         )}
 
+        {(mobileMenuOpen || mobileBoardOpen || mobileMapOptionsOpen) && (
+          <div 
+            className="mobile-drawer-backdrop show" 
+            onClick={() => {
+              setMobileMenuOpen(false)
+              setMobileBoardOpen(false)
+              setMobileMapOptionsOpen(false)
+            }} 
+          />
+        )}
+
         {!shortcutChromeHidden && (
           <div className="mobile-toggle-bar">
             <button 
@@ -4184,6 +4266,7 @@ function App() {
               onClick={() => {
                 setMobileMenuOpen(!mobileMenuOpen)
                 setMobileBoardOpen(false)
+                setMobileMapOptionsOpen(false)
               }}
             >
               <Menu size={14} />
@@ -4195,6 +4278,7 @@ function App() {
               onClick={() => {
                 setMobileBoardOpen(!mobileBoardOpen)
                 setMobileMenuOpen(false)
+                setMobileMapOptionsOpen(false)
               }}
             >
               <Sliders size={14} />
@@ -4204,7 +4288,109 @@ function App() {
                   : (lang === 'ko' ? '순위' : lang === 'vi' ? 'Bảng xếp hạng' : 'Ranks')}
               </span>
             </button>
+            <button 
+              type="button" 
+              className={`mobile-toggle-btn ${mobileMapOptionsOpen ? 'active' : ''}`}
+              onClick={() => {
+                setMobileMapOptionsOpen(!mobileMapOptionsOpen)
+                setMobileMenuOpen(false)
+                setMobileBoardOpen(false)
+              }}
+            >
+              <Layers size={14} />
+              <span>{lang === 'ko' ? '레이어' : lang === 'vi' ? 'Lớp bản đồ' : 'Layers'}</span>
+            </button>
           </div>
+        )}
+
+        {/* Mobile Map Options Sheet */}
+        {!shortcutChromeHidden && (
+          <aside className={`mobile-map-options-sheet ${mobileMapOptionsOpen ? 'mobile-open' : ''}`}>
+            <div className="mobile-sheet-drag-handle" />
+            <div className="panel-heading">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Layers size={15} />
+                <span>{lang === 'ko' ? '지도 및 표시 설정' : lang === 'vi' ? 'Cài đặt bản đồ & hiển thị' : 'Map & Display Options'}</span>
+              </div>
+              <button type="button" className="mobile-sheet-close" onClick={() => setMobileMapOptionsOpen(false)}>
+                <X size={15} />
+              </button>
+            </div>
+            
+            <div className="mobile-sheet-body">
+              {/* 1. Map Theme Selection */}
+              <div className="mobile-option-group">
+                <h4>{lang === 'ko' ? '지도 스타일' : lang === 'vi' ? 'Kiểu bản đồ' : 'Map Style'}</h4>
+                <div className="mobile-capsule-row">
+                  {mapThemes.map((item) => {
+                    const transKey = 'style' + item.id.charAt(0).toUpperCase() + item.id.slice(1)
+                    const isActive = item.id === mapTheme
+                    return (
+                      <button
+                        type="button"
+                        className={`mobile-capsule-btn ${isActive ? 'active' : ''}`}
+                        key={item.id}
+                        onClick={() => setMapTheme(item.id)}
+                      >
+                        {translations[lang][transKey] || item.shortLabel}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 2. 3D Mode Toggle */}
+              <div className="mobile-option-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4>{lang === 'ko' ? '3D 입체 뷰' : lang === 'vi' ? 'Chế độ 3D' : '3D View Mode'}</h4>
+                  <button
+                    type="button"
+                    className={`mobile-switch-btn ${is3DMode ? 'active' : ''}`}
+                    onClick={() => setIs3DMode((v) => !v)}
+                  >
+                    {is3DMode ? (translations[lang]['view3d'] || 'ON') : (translations[lang]['view2d'] || 'OFF')}
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Region Zoom Shortcuts */}
+              <div className="mobile-option-group">
+                <h4>{lang === 'ko' ? '화면 데이터 방식' : lang === 'vi' ? 'Phương thức dữ liệu' : 'Data View'}</h4>
+                <div className="mobile-capsule-row">
+                  {regionLayers.map((item) => {
+                    const isActive = item.id === regionLayer
+                    return (
+                      <button
+                        type="button"
+                        className={`mobile-capsule-btn ${isActive ? 'active' : ''}`}
+                        key={item.id}
+                        onClick={() => setRegionLayer(item.id)}
+                      >
+                        {translations[lang][item.id] || item.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 4. Display Overlays Checkboxes */}
+              <div className="mobile-option-group">
+                <h4>{lang === 'ko' ? '화면 표시 항목' : lang === 'vi' ? 'Lớp hiển thị' : 'Display Overlays'}</h4>
+                <div className="mobile-checkbox-list">
+                  {overlayOptions.map((item) => (
+                    <label className="mobile-checkbox-label" key={item.key}>
+                      <span>{translations[lang]['opt_' + item.key] || item.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={overlayVisibility[item.key]}
+                        onChange={() => toggleOverlay(item.key)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </aside>
         )}
 
         {showControls && (

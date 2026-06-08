@@ -1654,267 +1654,522 @@
 .mobile-toggle-bar {
   display: none;
 }
+.mobile-header {
+  display: none;
+}
+.mobile-drawer-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(2, 6, 12, 0.5);
+  backdrop-filter: blur(3px);
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.mobile-drawer-backdrop.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mobile-drawer-header {
+  display: none;
+}
+.mobile-sheet-drag-handle {
+  display: none;
+}
+.mobile-map-options-sheet {
+  display: none;
+}
 
 /* Mobile responsive layout overrides */
 @media (max-width: 768px) {
-  /* Title lockup adjustment */
-  .title-lockup {
-    left: 10px !important;
-    top: 10px !important;
-    right: 10px !important;
-    width: auto !important;
-    max-width: none !important;
-    padding: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-  .title-lockup h1 {
-    font-size: 14px !important;
-  }
-  .title-lockup p {
-    display: none !important; /* Hide subtitle to save space */
-  }
-  .brand-row {
-    max-width: calc(100% - 130px) !important;
-    gap: 6px !important;
-    margin-bottom: 2px !important;
-  }
-  .brand-mark {
-    height: 20px !important;
-    min-width: 40px !important;
-    font-size: 11px !important;
-    padding: 0 6px !important;
-  }
-  .brand-sub {
-    font-size: 8px !important;
-    letter-spacing: 0.1em !important;
-  }
-  .headline-row {
-    width: 100% !important;
-    gap: 6px !important;
-    margin-bottom: 2px !important;
-    align-items: center !important;
-  }
-  .topic {
-    font-size: 10px !important;
-    padding: 2px 5px 3px !important;
+  /* Hide desktop control dock completely */
+  .control-dock {
+    display: none !important;
   }
 
-  /* Status strip adjustment - make it fit or stack */
-  .status-strip {
-    right: 10px !important;
-    top: 10px !important;
-    left: auto !important;
-    bottom: auto !important;
-    width: auto !important;
-    max-width: none !important;
-    padding: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    display: flex !important;
-    gap: 6px !important;
-    align-items: center !important;
+  /* Unify header styling */
+  .title-lockup {
+    display: none !important; /* Hide old title container completely */
   }
-  /* Hide minor text elements inside status strip on mobile */
-  .status-strip span {
-    display: none !important;
+  .status-strip {
+    display: none !important; /* Hide old status strip completely */
+  }
+
+  /* Mobile Unified Navigation Header */
+  .mobile-header {
+    display: flex !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 54px !important;
+    background: rgba(4, 12, 22, 0.76) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-bottom: 1px solid rgba(178, 218, 255, 0.15) !important;
+    z-index: 100 !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 0 12px !important;
+  }
+  .mobile-header-brand {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    gap: 0px !important;
+  }
+  .mobile-header-brand .brand-mark {
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    color: #ffffff !important;
+    letter-spacing: 0.05em !important;
+    line-height: 1.1 !important;
+  }
+  .mobile-header-brand .brand-sub {
+    font-size: 8px !important;
+    font-weight: 700 !important;
+    color: var(--accent-color, #1a75ff) !important;
+    letter-spacing: 0.12em !important;
+    opacity: 0.9 !important;
+    line-height: 1 !important;
+  }
+  .mobile-header-title {
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    text-align: center !important;
+    max-width: 42% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5) !important;
+  }
+  .mobile-header-controls {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  .mobile-header-refresh {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    transition: background 0.2s ease !important;
+  }
+  .mobile-header-refresh:active {
+    background: rgba(255, 255, 255, 0.2) !important;
+  }
+  .mobile-lang-selector {
+    display: flex !important;
+    background: rgba(3, 12, 22, 0.6) !important;
+    border: 1px solid rgba(178, 218, 255, 0.12) !important;
+    border-radius: 14px !important;
+    padding: 2px !important;
+    gap: 1px !important;
+  }
+  .mobile-lang-btn {
+    font-size: 9px !important;
+    font-weight: 800 !important;
+    padding: 3px 6px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.55) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+  }
+  .mobile-lang-btn.active {
+    background: #f4f9ff !important;
+    color: #030c16 !important;
   }
 
   /* Mobile floating toggles row */
   .mobile-toggle-bar {
-    position: absolute;
-    z-index: 15;
-    left: 10px;
-    top: 90px !important;
+    position: absolute !important;
+    z-index: 15 !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: 66px !important;
     bottom: auto !important;
     display: flex !important;
-    gap: 8px;
+    gap: 6px !important;
   }
   .mobile-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(3, 12, 22, 0.88);
-    border: 1px solid rgba(178, 218, 255, 0.25);
-    color: #ffffff;
-    padding: 6px 12px;
-    font-size: 11px;
-    font-weight: bold;
-    border-radius: 4px;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    transition: all 0.2s ease;
+    flex: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    background: rgba(4, 12, 22, 0.84) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(178, 218, 255, 0.18) !important;
+    color: #e2f0fd !important;
+    padding: 8px 0 !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
   .mobile-toggle-btn.active {
-    background: var(--accent-color, #1a75ff);
-    border-color: var(--accent-color, #1a75ff);
-    box-shadow: 0 0 10px var(--accent-color, #1a75ff);
+    background: var(--accent-color, #1a75ff) !important;
+    border-color: var(--accent-color, #1a75ff) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(26, 117, 255, 0.45) !important;
   }
 
-  /* Adjust panels display and width based on toggle states */
+  /* Left drawer sliding animation for scenario selector */
   .scenario-sidebar {
     position: absolute !important;
-    z-index: 12 !important;
-    left: 10px !important;
-    top: 135px !important;
-    width: calc(100% - 20px) !important;
-    bottom: 210px !important;
-    height: auto !important;
+    z-index: 20 !important;
+    left: 0 !important;
+    top: 54px !important;
+    bottom: 0 !important;
+    right: auto !important;
+    width: 85vw !important;
+    max-width: 310px !important;
+    height: calc(100% - 54px) !important;
     max-height: none !important;
-    display: none !important; /* Fix closed panel display bug */
+    background: rgba(4, 12, 22, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-right: 1px solid rgba(178, 218, 255, 0.15) !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-radius: 0px !important;
+    display: flex !important;
     flex-direction: column !important;
+    padding: 0px !important;
+    box-shadow: 8px 0 24px rgba(0,0,0,0.6) !important;
+    transform: translateX(-110%) !important;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
   .scenario-sidebar.mobile-open {
-    display: flex !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-    transform: translateY(0) !important;
+    transform: translateX(0) !important;
   }
 
-  .rank-panel,
-  .typhoon-board-panel {
-    position: absolute !important;
-    z-index: 12 !important;
-    left: 10px !important;
-    right: 10px !important;
-    top: 135px !important;
-    bottom: 210px !important;
-    width: auto !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow-y: auto !important;
-    display: none !important; /* Fix closed panel display bug */
-    flex-direction: column !important;
-  }
-  .rank-panel.mobile-open,
-  .typhoon-board-panel.mobile-open {
+  /* Drawer Header */
+  .mobile-drawer-header {
     display: flex !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-    transform: translateY(0) !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 14px 16px !important;
+    border-bottom: 1px solid rgba(178, 218, 255, 0.12) !important;
+    flex-shrink: 0 !important;
   }
-
-  /* Control dock adjustments for mobile - make it scroll-free and clean */
-  .control-dock {
-    left: 10px !important;
-    right: 10px !important;
-    bottom: 10px !important;
-    transform: none !important;
-    width: auto !important;
-    max-width: none !important;
-    padding: 8px !important;
-    display: flex !important;
-    justify-content: space-around !important;
-    gap: 4px !important;
-    height: auto !important;
+  .mobile-drawer-header h3 {
+    margin: 0 !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    letter-spacing: -0.01em !important;
   }
-  /* Hide button text spans on mobile to make buttons icon-only */
-  .control-dock button span {
-    display: none !important;
-  }
-  /* Shape control buttons into uniform square icon buttons */
-  .control-dock button,
-  .control-dock .region-tabs button,
-  .control-dock .map-style-tabs button {
+  .mobile-drawer-close {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255,255,255,0.6) !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    width: 36px !important;
-    height: 36px !important;
-    padding: 0 !important;
-    border-radius: 4px !important;
-    background: rgba(3, 12, 22, 0.6) !important;
-    border: 1px solid rgba(178, 218, 255, 0.15) !important;
-    color: #eef7ff !important;
-    font-size: 14px !important;
-  }
-  .control-dock button.active,
-  .control-dock .region-tabs button.active,
-  .control-dock .map-style-tabs button.active {
-    background: #f4f9ff !important;
-    color: #06111e !important;
-    border-color: #f4f9ff !important;
+    cursor: pointer !important;
   }
 
-  /* Scoped light theme override for control buttons in map-admin */
-  .map-admin .control-dock button,
-  .map-admin .control-dock .region-tabs button,
-  .map-admin .control-dock .map-style-tabs button {
-    background: rgba(255, 255, 255, 0.82) !important;
-    border-color: rgba(32, 82, 128, 0.22) !important;
-    color: #09233f !important;
+  /* Scenarios content list */
+  .scenario-sidebar .category-group {
+    padding: 10px 14px !important;
+    border-bottom: 1px solid rgba(178, 218, 255, 0.05) !important;
   }
-  .map-admin .control-dock button.active,
-  .map-admin .control-dock .region-tabs button.active,
-  .map-admin .control-dock .map-style-tabs button.active {
-    color: #f8fbff !important;
-    background: #123b66 !important;
-    border-color: #123b66 !important;
+  .scenario-sidebar .category-title {
+    margin-bottom: 6px !important;
+    font-size: 11px !important;
+  }
+  .scenario-sidebar .category-tabs {
+    gap: 5px !important;
+  }
+  .scenario-sidebar .scenario-btn {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
   }
 
-  /* Timebar panel optimizations for mobile */
-  .timebar-panel {
-    left: 10px !important;
-    right: 10px !important;
-    bottom: 60px !important;
-    width: auto !important;
-    transform: none !important;
-    padding: 8px 12px !important;
+  /* Bottom sheet sliding animation for rankings / typhoon board */
+  .rank-panel,
+  .typhoon-board-panel,
+  .mobile-map-options-sheet {
+    position: absolute !important;
+    z-index: 20 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    height: 46vh !important;
+    max-height: 420px !important;
+    background: rgba(4, 12, 22, 0.94) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-top: 1px solid rgba(178, 218, 255, 0.16) !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-radius: 16px 16px 0 0 !important;
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.6) !important;
     display: flex !important;
     flex-direction: column !important;
-    min-height: 128px !important;
+    transform: translateY(110%) !important;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    overflow: hidden !important;
+  }
+  .rank-panel.mobile-open,
+  .typhoon-board-panel.mobile-open,
+  .mobile-map-options-sheet.mobile-open {
+    transform: translateY(0) !important;
+  }
+
+  /* Drag handle visual cue */
+  .mobile-sheet-drag-handle {
+    display: block !important;
+    width: 36px !important;
+    height: 4px !important;
+    background: rgba(255, 255, 255, 0.22) !important;
+    border-radius: 2px !important;
+    margin: 8px auto 0 !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Bottom sheet headings */
+  .rank-panel .panel-heading,
+  .typhoon-board-panel .panel-heading,
+  .mobile-map-options-sheet .panel-heading {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 10px 16px 10px !important;
+    border-bottom: 1px solid rgba(178, 218, 255, 0.1) !important;
+    background: transparent !important;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+  }
+  .rank-panel .panel-heading span,
+  .typhoon-board-panel .panel-heading span,
+  .mobile-map-options-sheet .panel-heading span {
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+  }
+  .mobile-sheet-close {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255,255,255,0.55) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+  }
+
+  /* Bottom sheet scrolling body */
+  .rank-panel .rank-row-container {
+    padding: 8px 16px !important;
+  }
+  .typhoon-board-panel .typhoon-board-body {
+    padding: 12px 16px 20px !important;
+    overflow-y: auto !important;
+  }
+  .rank-panel {
+    overflow-y: auto !important;
+  }
+
+  /* Map Options Sheet Body & Form styling */
+  .mobile-map-options-sheet .mobile-sheet-body {
+    padding: 14px 16px 24px !important;
+    overflow-y: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+  .mobile-option-group {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+  .mobile-option-group h4 {
+    margin: 0 !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    color: rgba(255, 255, 255, 0.45) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+  }
+  .mobile-capsule-row {
+    display: flex !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+  .mobile-capsule-btn {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    padding: 5px 12px !important;
+    border-radius: 14px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: all 0.2s ease !important;
+  }
+  .mobile-capsule-btn.active {
+    background: #ffffff !important;
+    border-color: #ffffff !important;
+    color: #030c16 !important;
+  }
+  .mobile-switch-btn {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+    padding: 4px 10px !important;
+    border-radius: 12px !important;
+    font-size: 9px !important;
+    font-weight: 900 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+  }
+  .mobile-switch-btn.active {
+    background: var(--accent-color, #1a75ff) !important;
+    border-color: var(--accent-color, #1a75ff) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 8px var(--accent-color, #1a75ff) !important;
+  }
+  .mobile-checkbox-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+  .mobile-checkbox-label {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 6px 10px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    cursor: pointer !important;
+    user-select: none !important;
+  }
+  .mobile-checkbox-label input {
+    cursor: pointer !important;
+  }
+
+  /* Timebar panel bottom layout placement */
+  .timebar-panel {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    width: auto !important;
+    transform: none !important;
+    padding: 8px 10px !important;
+    background: rgba(3, 12, 22, 0.88) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(178, 218, 255, 0.12) !important;
+    z-index: 5 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
   }
   .timebar-panel.collapsed {
     min-height: 0 !important;
     height: auto !important;
   }
+
+  /* SVG chart stretch inside bottom sheet */
   .trend-chart-wrapper {
-    height: 48px !important;
+    height: 42px !important;
     margin-top: 4px !important;
+    border-radius: 4px !important;
   }
   .timebar-axis-row {
-    height: 14px !important;
-    margin-top: 5px !important;
-    margin-bottom: 0px !important;
+    height: 12px !important;
+    margin-top: 3px !important;
+    margin-bottom: 2px !important;
   }
   .timebar-axis-row span {
-    font-size: 9px !important;
+    font-size: 8px !important;
   }
+
+  /* Timebar play row & Meta info details */
   .timebar-controls-row {
     margin-top: 4px !important;
-    gap: 8px !important;
+    gap: 6px !important;
   }
   .timeline-meta {
     min-width: 0 !important;
     flex: 1 !important;
   }
   .timeline-meta strong {
-    font-size: 11px !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
   }
   .timeline-meta span {
-    font-size: 9px !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    font-size: 8px !important;
+    line-height: 1 !important;
+  }
+  .timeline-play {
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+  }
+  .timeline-slider {
+    height: 4px !important;
+  }
+  .timeline-slider::-webkit-slider-thumb {
+    width: 12px !important;
+    height: 12px !important;
   }
 
-  /* Position legend cleanly on the right on mobile */
+  /* Map Legends positioning */
   .legend {
     position: absolute !important;
     left: auto !important;
-    right: 10px !important;
-    bottom: 200px !important;
-    width: 150px !important;
-    background: rgba(3, 12, 22, 0.8) !important;
-    padding: 6px !important;
-    border: 1px solid rgba(178, 218, 255, 0.15) !important;
+    right: 8px !important;
+    bottom: 64px !important; /* Move above the collapsed timebar */
+    width: 140px !important;
+    background: rgba(3, 12, 22, 0.82) !important;
+    padding: 5px !important;
+    border: 1px solid rgba(178, 218, 255, 0.12) !important;
     border-radius: 4px !important;
     font-size: 8px !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    z-index: 4 !important;
+    transition: bottom 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
+  /* Move legend up when timebar is expanded to prevent overlap */
+  .broadcast-shell:not(.controls-hidden) .timebar-panel:not(.collapsed) ~ .legend {
+    bottom: 128px !important;
+  }
+
   .legend-labels {
-    height: 12px !important;
+    height: 10px !important;
+    margin-bottom: 2px !important;
   }
   .legend-labels span {
     font-size: 8px !important;
