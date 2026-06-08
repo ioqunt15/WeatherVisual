@@ -10,6 +10,14 @@
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `TASK-INIT` | Harness Architecture | 2026-06-01 | Design Evaluator / System | 100 / 100 | **PASS** | 없음 |
 | `TASK-REPAIR` | Wind Map Overlay | 2026-06-04 | Design Evaluator / Antigravity | 98 / 100 | **PASS** | 없음 |
+| `TASK-MOBILE` | Mobile Layout & Zoom UI | 2026-06-04 | Design Evaluator / Antigravity | 99 / 100 | **PASS** | 없음 |
+| `TASK-WIND-3D` | 3D Wind Overlay & Arrows | 2026-06-05 | Design Evaluator / Antigravity | 99 / 100 | **PASS** | 없음 |
+| `TASK-WIND-3D-DEBUG` | Wind Rendering Crash Fix | 2026-06-05 | Design Evaluator / Antigravity | 100 / 100 | **PASS** | 없음 |
+| `TASK-WIND-3D-SIZE` | Wind Visual Calibrations | 2026-06-05 | Design Evaluator / Antigravity | 99 / 100 | **PASS** | 없음 |
+| `TASK-WIND-3D-CALIBRATE` | Dynamic Typhoon Vortex & Windbar Size Fix | 2026-06-05 | Design Evaluator / Antigravity | 100 / 100 | **PASS** | 없음 |
+
+
+
 
 ## 2. 디자인 평가 규칙 재확인
 * UI 및 비주얼 관련 모든 변경 작업은 최종적으로 본 리뷰 대장에 **PASS** Verdict가 누적 기록되어야 완성 상태로 이전할 수 있습니다.

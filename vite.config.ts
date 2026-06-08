@@ -18,5 +18,11 @@ export default defineConfig(({ mode }) => {
         },
       },
     ],
+    define: mode === 'production' ? {
+      'console.log': '(() => {})',
+      'console.info': '(() => {})',
+      'console.debug': '(() => {})',
+      'console.warn': '(() => {})',
+    } : {},
   }
 })

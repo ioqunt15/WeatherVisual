@@ -48,7 +48,7 @@ type RegionLayerId = 'stations' | 'regions'
 
 const DEFAULT_MAX_ELEVATION = 80_000
 const RAIN_MAX_ELEVATION = 120_000
-const RAIN_PRIMARY_ELEVATION_VALUE = 400
+const RAIN_PRIMARY_ELEVATION_VALUE = 40
 const RAIN_PRIMARY_ELEVATION_HEIGHT = 80_000
 
 type Coordinate = [number, number]
@@ -467,7 +467,7 @@ function getRainElevationValue(value: number, scenario: DisasterScenario) {
 }
 
 function getLinearElevationValue(value: number, scenario: DisasterScenario) {
-  if (scenario.id === 'rain') {
+  if (scenario.id === 'rain' || scenario.id === 'forecast_rain') {
     return getRainElevationValue(value, scenario)
   }
 
@@ -665,6 +665,14 @@ function translateLiveText(text: string | undefined, lang: Language): string {
       processed = processed.replace(/예보/g, 'Dự báo')
     } else if (lang === 'en') {
       processed = processed.replace(/예보/g, 'Forecast')
+    }
+  }
+  // 누적 -> Lũy kế (vi), Accum (en)
+  if (processed.includes('누적')) {
+    if (lang === 'vi') {
+      processed = processed.replace(/누적/g, 'Lũy kế')
+    } else if (lang === 'en') {
+      processed = processed.replace(/누적/g, 'Accum')
     }
   }
   return processed
@@ -1468,6 +1476,12 @@ function App() {
   const [showControls, setShowControls] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileBoardOpen, setMobileBoardOpen] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
+    observation: true,
+    forecast: false,
+    danger: false,
+    marine: false,
+  })
   const [is3DMode, setIs3DMode] = useState(true)
   const is3DModeRef = useRef(is3DMode)
   const [mapStyleLoaded, setMapStyleLoaded] = useState(false)
@@ -1986,7 +2000,7 @@ function App() {
     }
   }, [scenario, refreshNonce, lang, selectedTyphoonId])
 
-  // Mouse right click listener and context menu prevention
+  // Global security listener: prevent right click, copy, cut, and track right mouse state
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
@@ -1998,25 +2012,28 @@ function App() {
         isRightMouseDownRef.current = false
       }
     }
-    window.addEventListener('mousedown', handleMouseDown)
-    window.addEventListener('mouseup', handleMouseUp)
-
-    const container = mapContainerRef.current
-    const handleContextMenu = (e: MouseEvent) => {
+    const preventDefaultAction = (e: Event) => {
       e.preventDefault()
     }
-    if (container) {
-      container.addEventListener('contextmenu', handleContextMenu)
-    }
+
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('contextmenu', preventDefaultAction)
+    window.addEventListener('copy', preventDefaultAction)
+    window.addEventListener('cut', preventDefaultAction)
+    window.addEventListener('dragstart', preventDefaultAction)
+    window.addEventListener('selectstart', preventDefaultAction)
 
     return () => {
       window.removeEventListener('mousedown', handleMouseDown)
       window.removeEventListener('mouseup', handleMouseUp)
-      if (container) {
-        container.removeEventListener('contextmenu', handleContextMenu)
-      }
+      window.removeEventListener('contextmenu', preventDefaultAction)
+      window.removeEventListener('copy', preventDefaultAction)
+      window.removeEventListener('cut', preventDefaultAction)
+      window.removeEventListener('dragstart', preventDefaultAction)
+      window.removeEventListener('selectstart', preventDefaultAction)
     }
-  }, [mapStyleLoaded])
+  }, [])
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) {
@@ -2185,8 +2202,14 @@ function App() {
           '#f8fbff',
         ])
       }
+      if (map.getLayer('callout-labels-native')) {
+        map.setFilter('callout-labels-native', ['!=', ['get', 'id'], selectedStationId])
+      }
+      if (map.getLayer('selected-callout-label-native')) {
+        map.setFilter('selected-callout-label-native', ['==', ['get', 'id'], selectedStationId])
+      }
     } catch (e) {
-      console.warn('Failed to update paint property for callout-pins-native:', e)
+      console.warn('Failed to update properties for callout layers:', e)
     }
   }, [selectedStationId, mapStyleLoaded])
 
@@ -2215,6 +2238,9 @@ function App() {
       }
       if (map.getLayer('callout-labels-native')) {
         map.setLayoutProperty('callout-labels-native', 'visibility', calloutVis)
+      }
+      if (map.getLayer('selected-callout-label-native')) {
+        map.setLayoutProperty('selected-callout-label-native', 'visibility', calloutVis)
       }
     } catch (e) {
       console.warn('Failed to update visibility for map layers:', e)
@@ -2246,10 +2272,13 @@ function App() {
     try {
       map.on('click', 'callout-pins-native', handlePinClick)
       map.on('click', 'callout-labels-native', handlePinClick)
+      map.on('click', 'selected-callout-label-native', handlePinClick)
       map.on('mouseenter', 'callout-pins-native', setPointerCursor)
       map.on('mouseleave', 'callout-pins-native', resetCursor)
       map.on('mouseenter', 'callout-labels-native', setPointerCursor)
       map.on('mouseleave', 'callout-labels-native', resetCursor)
+      map.on('mouseenter', 'selected-callout-label-native', setPointerCursor)
+      map.on('mouseleave', 'selected-callout-label-native', resetCursor)
     } catch (e) {
       console.warn('Failed to bind click/hover events to map layers:', e)
     }
@@ -2258,10 +2287,13 @@ function App() {
       try {
         map.off('click', 'callout-pins-native', handlePinClick)
         map.off('click', 'callout-labels-native', handlePinClick)
+        map.off('click', 'selected-callout-label-native', handlePinClick)
         map.off('mouseenter', 'callout-pins-native', setPointerCursor)
         map.off('mouseleave', 'callout-pins-native', resetCursor)
         map.off('mouseenter', 'callout-labels-native', setPointerCursor)
         map.off('mouseleave', 'callout-labels-native', resetCursor)
+        map.off('mouseenter', 'selected-callout-label-native', setPointerCursor)
+        map.off('mouseleave', 'selected-callout-label-native', resetCursor)
       } catch (e) {
         // Ignore style change teardown errors
       }
@@ -2386,12 +2418,31 @@ function App() {
           })
         }
 
-        // 1-5. 말풍선 아이콘 레이어 (symbol)
+        // 1-5. 말풍선 아이콘 레이어 (symbol) - 선택되지 않은 지점들 (서로 겹치지 않게 처리)
         if (!map.getLayer('callout-labels-native')) {
           map.addLayer({
             id: 'callout-labels-native',
             type: 'symbol',
             source: 'callout-pins-source',
+            filter: ['!=', ['get', 'id'], selectedStationId],
+            layout: {
+              'icon-image': ['concat', 'station-callout-', ['get', 'id']],
+              'icon-size': 1.0,
+              'icon-anchor': 'bottom',
+              'icon-offset': [0, -4],
+              'icon-allow-overlap': false,
+              'icon-ignore-placement': false,
+            },
+          })
+        }
+
+        // 1-5-selected. 선택된 지점용 말풍선 레이어 (항상 맨 위에 표시 및 겹침 무조건 허용)
+        if (!map.getLayer('selected-callout-label-native')) {
+          map.addLayer({
+            id: 'selected-callout-label-native',
+            type: 'symbol',
+            source: 'callout-pins-source',
+            filter: ['==', ['get', 'id'], selectedStationId],
             layout: {
               'icon-image': ['concat', 'station-callout-', ['get', 'id']],
               'icon-size': 1.0,
@@ -3350,12 +3401,42 @@ function App() {
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Block F12, Ctrl+Shift+I/J/C/K, Ctrl+U, Ctrl+S, Ctrl+P, and macOS Cmd+Option+I/J/C/K
+      const key = event.key.toLowerCase()
+      const ctrlOrCmd = event.ctrlKey || event.metaKey
+      const shift = event.shiftKey
+      const alt = event.altKey
+
+      if (event.key === 'F12') {
+        event.preventDefault()
+        return
+      }
+      if (ctrlOrCmd && shift && (key === 'i' || key === 'j' || key === 'c' || key === 'k')) {
+        event.preventDefault()
+        return
+      }
+      if (ctrlOrCmd && alt && (key === 'i' || key === 'j' || key === 'c' || key === 'k')) {
+        event.preventDefault()
+        return
+      }
+      if (ctrlOrCmd && key === 'u') {
+        event.preventDefault()
+        return
+      }
+      if (ctrlOrCmd && key === 's') {
+        event.preventDefault()
+        return
+      }
+      if (ctrlOrCmd && key === 'p') {
+        event.preventDefault()
+        return
+      }
+
       if (isTypingTarget(event.target)) {
         return
       }
 
       const map = mapRef.current
-      const key = event.key.toLowerCase()
 
       if (isRightMouseDownRef.current && (key === 'w' || key === 's')) {
         event.preventDefault()
@@ -3507,7 +3588,29 @@ function App() {
     typhoon: RotateCw,
   }
 
+  // Automatically expand the category containing the active scenario
+  useEffect(() => {
+    const activeCat = categories.find((cat) => cat.scenarioIds.includes(scenarioId))
+    if (activeCat) {
+      setExpandedCategories((prev) => ({
+        ...prev,
+        [activeCat.id]: true,
+      }))
+    }
+  }, [scenarioId])
+
+  const toggleCategory = (catId: string) => {
+    setExpandedCategories((prev) => ({
+      ...prev,
+      [catId]: !prev[catId],
+    }))
+  }
+
   const selectScenario = (nextScenarioId: typeof scenarioId) => {
+    if (nextScenarioId === scenarioId) {
+      setMobileMenuOpen(false)
+      return
+    }
     const nextScenario = scenarios.find((item) => item.id === nextScenarioId) ?? scenarios[0]
 
     setScenarioId(nextScenario.id)
@@ -3550,31 +3653,56 @@ function App() {
 
         {showControls && !shortcutChromeHidden && (
           <aside className={`scenario-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="기상 시나리오 선택">
-            {categories.map((cat) => (
-              <div className="category-group" key={cat.id}>
-                <h3 className="category-title">{translations[lang][cat.id] || cat.title}</h3>
-                <div className="category-tabs">
-                  {cat.scenarioIds.map((id) => {
-                    const item = scenarios.find((s) => s.id === id)
-                    if (!item) return null
-                    const Icon = scenarioIcon[id as keyof typeof scenarioIcon]
-                    const isActive = id === scenario.id
+            {categories.map((cat) => {
+              const isExpanded = !!expandedCategories[cat.id]
+              return (
+                <div className="category-group" key={cat.id}>
+                  <h3 
+                    className="category-title" 
+                    onClick={() => toggleCategory(cat.id)}
+                    style={{ 
+                      cursor: 'pointer', 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      userSelect: 'none'
+                    }}
+                  >
+                    <span>{translations[lang][cat.id] || cat.title}</span>
+                    <ChevronDown 
+                      size={12} 
+                      style={{ 
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', 
+                        transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                        opacity: 0.7
+                      }} 
+                    />
+                  </h3>
+                  {isExpanded && (
+                    <div className="category-tabs">
+                      {cat.scenarioIds.map((id) => {
+                        const item = scenarios.find((s) => s.id === id)
+                        if (!item) return null
+                        const Icon = scenarioIcon[id as keyof typeof scenarioIcon]
+                        const isActive = id === scenario.id
 
-                    return (
-                      <button
-                        type="button"
-                        className={`scenario-btn ${isActive ? 'active' : ''}`}
-                        key={id}
-                        onClick={() => selectScenario(id as any)}
-                      >
-                        <Icon size={13} />
-                        <span>{translations[lang][id] || item.title}</span>
-                      </button>
-                    )
-                  })}
+                        return (
+                          <button
+                            type="button"
+                            className={`scenario-btn ${isActive ? 'active' : ''}`}
+                            key={id}
+                            onClick={() => selectScenario(id as any)}
+                          >
+                            <Icon size={13} />
+                            <span>{translations[lang][id] || item.title}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </aside>
         )}
 

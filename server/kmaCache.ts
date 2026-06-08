@@ -185,7 +185,7 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
     })
     frames.push({
       id: `rain-now-${currentTime}`,
-      label: `실況 ${ACCUM_HOURS}h 누적`,
+      label: `실황 ${ACCUM_HOURS}h 누적`,
       updatedAt: formatTimeLabel(currentTime),
       source: 'Open-Meteo 12시간 누적강수',
       points: nowAccumPoints,
