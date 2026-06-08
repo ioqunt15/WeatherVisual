@@ -274,20 +274,30 @@
   position: absolute;
   z-index: 5;
   right: 20px;
-  bottom: 84px;
+  bottom: 104px;
   width: min(258px, 20vw);
   padding: 12px;
   color: #f9fbff;
   background: rgba(3, 12, 22, 0.66);
   border: 1px solid rgba(150, 205, 255, 0.22);
   backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.95) translateY(10px);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.rank-panel.mobile-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1) translateY(0);
 }
 
 .typhoon-board-panel {
   position: absolute;
   z-index: 5;
   right: 20px;
-  bottom: 84px;
+  bottom: 104px;
   width: min(290px, 22vw);
   padding: 14px;
   color: #f9fbff;
@@ -295,6 +305,16 @@
   border: 1.5px solid #ff1744;
   backdrop-filter: blur(12px);
   box-shadow: 0 8px 32px rgba(255, 23, 68, 0.15);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.95) translateY(10px);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.typhoon-board-panel.mobile-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1) translateY(0);
 }
 
 .typhoon-board-body {
@@ -735,6 +755,38 @@
   background: rgba(8, 17, 28, 0.74);
   border: 1px solid rgba(184, 220, 255, 0.35);
   cursor: pointer;
+}
+
+.desktop-rank-toggle-btn {
+  position: absolute;
+  z-index: 8;
+  right: 20px;
+  bottom: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: #eef7ff;
+  background: rgba(8, 17, 28, 0.74);
+  border: 1px solid rgba(184, 220, 255, 0.35);
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.desktop-rank-toggle-btn:hover {
+  background: rgba(26, 117, 255, 0.2);
+  border-color: #1a75ff;
+}
+
+.desktop-rank-toggle-btn.active {
+  background: var(--accent-color, #1a75ff);
+  border-color: var(--accent-color, #1a75ff);
+  color: #ffffff;
+  box-shadow: 0 0 8px var(--accent-color, #1a75ff);
 }
 
 .control-dock {
@@ -1714,8 +1766,15 @@
     border-bottom: 1px solid rgba(178, 218, 255, 0.15) !important;
     z-index: 100 !important;
     align-items: center !important;
-    justify-content: center !important;
-    padding: 0 8px !important;
+    padding: 0 !important;
+  }
+
+  .mobile-header-menu-btn {
+    justify-self: center !important;
+  }
+
+  .mobile-header-layers-btn {
+    justify-self: center !important;
   }
 
   .mobile-header-menu-btn,
@@ -1731,6 +1790,7 @@
     justify-content: center !important;
     transition: background 0.2s ease !important;
     border-radius: 4px !important;
+    flex-shrink: 0 !important;
   }
   .mobile-header-menu-btn:active,
   .mobile-header-layers-btn:active {
@@ -1739,18 +1799,29 @@
 
   .mobile-header-center {
     display: flex !important;
+    flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
+    gap: 1px !important;
   }
 
-  .mobile-header-center .brand-mark {
-    background: transparent !important; /* 배경 없앰 */
-    color: #ffffff !important; /* 흰색 폰트 유지 */
-    font-size: 18px !important;
+  .mobile-header-logo {
+    width: 28px !important;
+    height: auto !important;
+    display: block !important;
+    filter: brightness(0) invert(1) !important; /* SVG를 흰색으로 */
+    opacity: 0.92 !important;
+  }
+
+  .mobile-brand-text {
+    background: transparent !important;
+    color: #ffffff !important;
+    font-size: 11px !important;
     font-weight: 900 !important;
-    letter-spacing: 0.08em !important;
+    letter-spacing: 0.12em !important;
     padding: 0 !important;
     display: inline-block !important;
+    line-height: 1 !important;
   }
 
   .mobile-header-brand {
@@ -1835,12 +1906,12 @@
     font-size: 11px !important;
   }
 
-  /* 모바일 플로팅 순위 버튼 스타일링 (34x34px, 우상단 플로팅) */
+  /* 모바일 플로팅 순위 버튼 스타일링 (34x34px, 우상단 66px 위치로 정밀 상향 조정) */
   .mobile-rank-toggle-btn {
     position: absolute !important;
     z-index: 15 !important;
     right: 12px !important;
-    top: 120px !important;
+    top: 66px !important;
     width: 34px !important;
     height: 34px !important;
     background: rgba(4, 12, 22, 0.84) !important;
@@ -1863,13 +1934,13 @@
     box-shadow: 0 0 12px rgba(26, 117, 255, 0.45) !important;
   }
 
-  /* 순위표 & 태풍 정보 패널 - 우측 컴팩트 플로팅 구조 */
+  /* 순위표 & 태풍 정보 패널 - 우측 컴팩트 플로팅 구조 (버튼 상단 66px과 정밀 일치) */
   .rank-panel,
   .typhoon-board-panel {
     position: absolute !important;
     z-index: 20 !important;
     right: 54px !important; /* 버튼(right 12px + width 34px) 왼쪽에 살짝 여백 */
-    top: 120px !important; /* 버튼 높이와 정렬 */
+    top: 66px !important; /* top: 120px -> 66px */
     bottom: auto !important;
     left: auto !important;
     width: 220px !important;
@@ -1899,6 +1970,7 @@
   .typhoon-board-panel {
     width: 235px !important; /* 태풍 보드는 텍스트 크기를 고려하여 소폭 넓게 */
     max-height: 280px !important;
+    top: 66px !important; /* top: 120px -> 66px */
   }
 
   /* 패널 슬라이딩 시트 장식 숨김 */
@@ -2167,15 +2239,14 @@
     min-width: 0 !important;
     flex-shrink: 0 !important;
     cursor: pointer !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    padding: 3px 6px !important;
-    border-radius: 4px !important;
+    background: transparent !important; /* 기존 디자인 (배경 제거) 복구 */
+    border: none !important;
+    padding: 0 !important;
     font-size: 10px !important;
-    font-weight: 800 !important;
+    font-weight: 850 !important;
     display: flex !important;
     align-items: center !important;
-    justify-content: center !important;
+    justify-content: flex-start !important;
     white-space: nowrap !important;
   }
   .timeline-meta strong {
@@ -2241,12 +2312,12 @@
     display: none !important;
   }
 
-  /* 세로형 범례 (Vertical Legend) - 우측 수직 배치 */
+  /* 세로형 범례 (Vertical Legend) - 우측 수직 배치 (순위 버튼 아래 110px 위치로 상향) */
   .legend {
     position: absolute !important;
     left: auto !important;
     right: 12px !important;
-    top: 164px !important; /* 순위 버튼 아래 배치 */
+    top: 110px !important; /* top: 164px -> 110px */
     bottom: auto !important;
     width: 34px !important; /* 순위 버튼과 가로 폭 일치 */
     height: 180px !important;
@@ -2291,5 +2362,10 @@
     line-height: 1 !important;
     white-space: nowrap !important;
     color: #eef7ff !important;
+  }
+
+  /* 모바일에서 우하단 운영 패널 버튼 숨김 */
+  .panel-toggle {
+    display: none !important;
   }
 }

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 149 112" role="img" aria-labelledby="title desc">
+  <title id="title">VHWIS flow icon</title>
+  <desc id="desc">Simplified VHWIS weather AI flow symbol in navy and electric blue.</desc>
+  <defs>
+    <linearGradient id="navy" x1="18" y1="34" x2="128" y2="25" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#061D55"/>
+      <stop offset="1" stop-color="#001846"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="21" y1="57" x2="125" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E63FF"/>
+      <stop offset="1" stop-color="#0054FF"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 34 H62 C72 34 77 44 83 55 C88 64 91 64 96 55 C104 40 112 25 128 25" stroke="url(#navy)" stroke-width="8"/>
+    <path d="M21 57 H56 C66 57 69 67 76 74" stroke="url(#blue)" stroke-width="8"/>
+    <path d="M47 78 C60 94 82 96 96 80 C108 66 110 57 124 57" stroke="url(#blue)" stroke-width="8"/>
+  </g>
+</svg>

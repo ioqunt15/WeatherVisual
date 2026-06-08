@@ -31,7 +31,6 @@ import {
   X,
   Gauge,
   Cloud,
-  Menu,
   Sliders,
 } from 'lucide-react'
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
@@ -3687,10 +3686,13 @@ function App() {
               }}
               title={translations[lang]['scenario_title'] || 'Menu'}
             >
-              <Menu size={20} />
+              <svg width="24" height="16" viewBox="0 0 24 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 2H22M2 8H22M2 14H22" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
             </button>
             <div className="mobile-header-center">
-              <span className="brand-mark">VHWIS</span>
+              <img src="/vhwis_logo.svg" alt="VHWIS logo" className="mobile-header-logo" />
+              <span className="brand-mark mobile-brand-text">VHWIS</span>
             </div>
             <button
               type="button"
@@ -3841,9 +3843,6 @@ function App() {
                       : (lang === 'ko' ? '과거 태풍 분석' : lang === 'vi' ? 'PHÂN TÍCH BÃO LỊCH SỬ' : 'HISTORICAL TYPHOON ANALYSIS')}
                   </span>
                 </div>
-                <button type="button" className="mobile-sheet-close" onClick={() => setMobileBoardOpen(false)}>
-                  <X size={15} />
-                </button>
               </div>
               <div className="typhoon-board-body">
                 <div className="typhoon-search-board" style={{ borderBottom: '1px solid rgba(255, 23, 68, 0.25)', paddingBottom: '8px', marginBottom: '4px' }}>
@@ -4024,9 +4023,6 @@ function App() {
                   <BarChart3 size={15} />
                   <span>{translations[lang][activeScenario.id] || activeScenario.metric}</span>
                 </div>
-                <button type="button" className="mobile-sheet-close" onClick={() => setMobileBoardOpen(false)}>
-                  <X size={15} />
-                </button>
               </div>
               {topPoints.map((point, index) => {
                 const valueColor = rgbaToCss(valueToSteppedColor(point.value, activeScenario.palette, 255));
@@ -4234,10 +4230,10 @@ function App() {
                           bottom: `${tick.position}%`,
                           transform:
                             index === 0
-                              ? 'translateY(50%)'
+                              ? 'translateY(0%)'
                               : index === legendTicks.length - 1
-                                ? 'translateY(-50%)'
-                                : 'translateY(50%)',
+                                ? 'translateY(-100%)'
+                                : 'translateY(-50%)',
                         }
                       : {
                           left: `${tick.position}%`,
@@ -4269,7 +4265,7 @@ function App() {
           </div>
         )}
 
-        {overlayVisibility.panelToggle && !shortcutChromeHidden && (
+        {overlayVisibility.panelToggle && !shortcutChromeHidden && !isMobile && (
           <button
             type="button"
             className="panel-toggle"
@@ -4277,6 +4273,21 @@ function App() {
             title="운영 패널"
           >
             <PanelsTopLeft size={16} />
+          </button>
+        )}
+
+        {overlayVisibility.rank && !shortcutChromeHidden && !isMobile && (
+          <button
+            type="button"
+            className={`desktop-rank-toggle-btn ${mobileBoardOpen ? 'active' : ''}`}
+            onClick={() => setMobileBoardOpen(!mobileBoardOpen)}
+            title={
+              activeScenario.id === 'typhoon'
+                ? (lang === 'ko' ? '태풍 정보' : lang === 'vi' ? 'Thông tin bão' : 'Typhoon Info')
+                : (lang === 'ko' ? '순위표' : lang === 'vi' ? 'Bảng xếp hạng' : 'Ranks')
+            }
+          >
+            {activeScenario.id === 'typhoon' ? <Sliders size={14} /> : <BarChart3 size={14} />}
           </button>
         )}
 
@@ -4291,7 +4302,7 @@ function App() {
           />
         )}
 
-        {!shortcutChromeHidden && (
+        {!shortcutChromeHidden && isMobile && (
           <button 
             type="button" 
             className={`mobile-rank-toggle-btn ${mobileBoardOpen ? 'active' : ''}`}
@@ -4611,16 +4622,14 @@ function App() {
                     }}
                   />
                   {!isMobile && <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>}
-                  {!isMobile && (
-                    <button
-                      type="button"
-                      className="timebar-toggle"
-                      onClick={() => setIsTimebarExpanded((prev) => !prev)}
-                      title={isTimebarExpanded ? "차트 접기" : "차트 펼치기"}
-                    >
-                      {isTimebarExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="timebar-toggle"
+                    onClick={() => setIsTimebarExpanded((prev) => !prev)}
+                    title={isTimebarExpanded ? "차트 접기" : "차트 펼치기"}
+                  >
+                    {isTimebarExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
                 </div>
               </div>
             )}
