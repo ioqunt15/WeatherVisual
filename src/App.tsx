@@ -2090,6 +2090,29 @@ function App() {
     // Smooth and gentle scroll wheel zoom speed
     map.scrollZoom.setWheelZoomRate(1 / 280)
 
+    // Reduce drag rotation sensitivity (bearing and pitch) to 1/3 of default value
+    const dragRotate = map.dragRotate as any
+    if (dragRotate && dragRotate._mouseRotate) {
+      const originalDragMove = dragRotate._mouseRotate.dragMove
+      dragRotate._mouseRotate.dragMove = function (e: any, point: any) {
+        const result = originalDragMove.call(this, e, point)
+        if (result && result.bearingDelta !== undefined) {
+          result.bearingDelta /= 3.0
+        }
+        return result
+      }
+    }
+    if (dragRotate && dragRotate._mousePitch) {
+      const originalPitchMove = dragRotate._mousePitch.dragMove
+      dragRotate._mousePitch.dragMove = function (e: any, point: any) {
+        const result = originalPitchMove.call(this, e, point)
+        if (result && result.pitchDelta !== undefined) {
+          result.pitchDelta /= 3.0
+        }
+        return result
+      }
+    }
+
     // setFog shim for MapLibre GL JS v5 (translates Mapbox setFog parameters to MapLibre setSky)
     ;(map as any).setFog = function (options: any) {
       if (!options) return
