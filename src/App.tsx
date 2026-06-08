@@ -4215,34 +4215,44 @@ function App() {
         {overlayVisibility.legend && (
           <div className={`legend ${isMobile ? 'mobile-vertical' : ''}`} aria-label="범례">
             {isMobile ? (
-              // 모바일 세로 범례: 색상 램프(좌) + 레이블(우) 구조
-              // 범례 박스는 right:0(우측 벽)에 붙음. 내부는 [ramp|labels] 순서
+              // 모바일 세로 범례: [단위(상단) + 본문(하단: 램프(좌) + 레이블(우))] 구조
+              // 모바일에서는 레이블의 단위 텍스트(예: m/s, °C 등)를 제거하고 범례 상단에 단위를 별도로 표기합니다.
               <>
-                <div
-                  className="legend-ramp"
-                  style={{ gridTemplateRows: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }}
-                >
-                  {activeScenario.palette.map(([stop, color]) => (
-                    <i key={stop} style={{ backgroundColor: color }} />
-                  ))}
-                </div>
-                <div className="legend-labels">
-                  {legendTicks.map((tick, index) => (
-                    <span
-                      key={`${tick.position}-${tick.label}`}
-                      style={{
-                        bottom: `${tick.position}%`,
-                        transform:
-                          index === 0
-                            ? 'translateY(50%)'
-                            : index === legendTicks.length - 1
-                              ? 'translateY(-50%)'
-                              : 'translateY(-50%)',
-                      }}
-                    >
-                      {tick.label}
-                    </span>
-                  ))}
+                {activeScenario.unit && (
+                  <div className="legend-mobile-unit">{activeScenario.unit}</div>
+                )}
+                <div className="legend-mobile-body">
+                  <div
+                    className="legend-ramp"
+                    style={{ gridTemplateRows: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }}
+                  >
+                    {activeScenario.palette.map(([stop, color]) => (
+                      <i key={stop} style={{ backgroundColor: color }} />
+                    ))}
+                  </div>
+                  <div className="legend-labels">
+                    {legendTicks.map((tick, index) => {
+                      const labelText = tick.label.endsWith(activeScenario.unit)
+                        ? tick.label.slice(0, -activeScenario.unit.length)
+                        : tick.label;
+                      return (
+                        <span
+                          key={`${tick.position}-${tick.label}`}
+                          style={{
+                            bottom: `${tick.position}%`,
+                            transform:
+                              index === 0
+                                ? 'translateY(50%)'
+                                : index === legendTicks.length - 1
+                                  ? 'translateY(-50%)'
+                                  : 'translateY(-50%)',
+                          }}
+                        >
+                          {labelText}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </>
             ) : (

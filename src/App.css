@@ -2375,7 +2375,6 @@
   }
 
   /* 세로형 범례 (Vertical Legend) - 우측 벽면 부착 */
-  /* 내부 구조: [ramp 6px | labels 나머지] - 좌전에서 우측으로 */
   .legend {
     position: absolute !important;
     left: auto !important;
@@ -2383,7 +2382,7 @@
     top: 110px !important;
     bottom: auto !important;
     width: 34px !important; /* 순위 버튼과 동일 너비: 34px */
-    height: 180px !important;
+    height: 195px !important; /* 높이 소폭 확대하여 단위(m/s 등) 공간 확보 */
     background: rgba(4, 12, 22, 0.84) !important; /* 순위 버튼 배경 통일 */
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
@@ -2392,11 +2391,33 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
     z-index: 10 !important;
     display: flex !important;
-    flex-direction: row !important; /* [ramp | labels] */
-    gap: 4px !important; /* 간격 소폭 확대 */
-    padding: 6px 3px !important; /* 좌우 패딩 줄여 16px의 라벨 공간 확보 */
+    flex-direction: column !important; /* 세로 방향 레이아웃: [단위] 아래 [본문] */
+    gap: 4px !important;
+    padding: 6px 3px !important;
     transition: none !important;
     overflow: visible !important;
+  }
+
+  .legend-mobile-unit {
+    display: block !important;
+    font-size: 7.5px !important;
+    font-weight: 800 !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    text-align: center !important;
+    width: 100% !important;
+    line-height: 1 !important;
+    margin-bottom: 2px !important;
+    border-bottom: 1px solid rgba(178, 218, 255, 0.15) !important;
+    padding-bottom: 3px !important;
+  }
+
+  .legend-mobile-body {
+    display: flex !important;
+    flex-direction: row !important; /* 좌측 색상바, 우측 수치 텍스트 배치 */
+    gap: 4px !important;
+    width: 100% !important;
+    flex: 1 !important;
+    position: relative !important;
   }
   
   /* 수직 램프: 고정 너비 6px, 아래=최솟값 색상 */
