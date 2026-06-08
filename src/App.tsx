@@ -3724,13 +3724,7 @@ function App() {
         )}
 
         {showControls && !shortcutChromeHidden && (
-          <aside className={`scenario-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="기상 시나리오 선택">
-            <div className="mobile-drawer-header">
-              <h3>{translations[lang]['scenario_title'] || (lang === 'ko' ? '기상 시나리오' : lang === 'vi' ? 'Kịch bản thời tiết' : 'Weather Scenarios')}</h3>
-              <button type="button" className="mobile-drawer-close" onClick={() => setMobileMenuOpen(false)}>
-                <X size={16} />
-              </button>
-            </div>
+          <aside className={`scenario-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="메뉴 선택">
             {categories.map((cat) => {
               const isExpanded = !!expandedCategories[cat.id]
               return (
@@ -4220,50 +4214,68 @@ function App() {
 
         {overlayVisibility.legend && (
           <div className={`legend ${isMobile ? 'mobile-vertical' : ''}`} aria-label="범례">
-            <div className="legend-labels">
-              {legendTicks.map((tick, index) => (
-                <span
-                  key={`${tick.position}-${tick.label}`}
-                  style={
-                    isMobile
-                      ? {
-                          bottom: index === legendTicks.length - 1
-                            ? 'calc(100% - 10px)'
-                            : `${tick.position}%`,
-                          transform:
-                            index === 0
-                              ? 'translateY(0%)'
-                              : index === legendTicks.length - 1
-                                ? 'translateY(0%)'
-                                : 'translateY(-50%)',
-                        }
-                      : {
-                          left: `${tick.position}%`,
-                          transform:
-                            index === 0
-                              ? 'translateX(0)'
-                              : index === legendTicks.length - 1
-                                ? 'translateX(-100%)'
-                                : 'translateX(-50%)',
-                        }
-                  }
+            {isMobile ? (
+              // 모바일 세로 범례: 색상 램프(좌) + 레이블(우) 구조
+              // 범례 박스는 right:0(우측 벽)에 붙음. 내부는 [ramp|labels] 순서
+              <>
+                <div
+                  className="legend-ramp"
+                  style={{ gridTemplateRows: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }}
                 >
-                  {tick.label}
-                </span>
-              ))}
-            </div>
-            <div
-              className="legend-ramp"
-              style={
-                isMobile
-                  ? { gridTemplateRows: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }
-                  : { gridTemplateColumns: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }
-              }
-            >
-              {activeScenario.palette.map(([stop, color]) => (
-                <i key={stop} style={{ backgroundColor: color }} />
-              ))}
-            </div>
+                  {activeScenario.palette.map(([stop, color]) => (
+                    <i key={stop} style={{ backgroundColor: color }} />
+                  ))}
+                </div>
+                <div className="legend-labels">
+                  {legendTicks.map((tick, index) => (
+                    <span
+                      key={`${tick.position}-${tick.label}`}
+                      style={{
+                        bottom: `${tick.position}%`,
+                        transform:
+                          index === 0
+                            ? 'translateY(50%)'
+                            : index === legendTicks.length - 1
+                              ? 'translateY(-50%)'
+                              : 'translateY(-50%)',
+                      }}
+                    >
+                      {tick.label}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              // 데스크톱 가로 범례
+              <>
+                <div className="legend-labels">
+                  {legendTicks.map((tick, index) => (
+                    <span
+                      key={`${tick.position}-${tick.label}`}
+                      style={{
+                        left: `${tick.position}%`,
+                        transform:
+                          index === 0
+                            ? 'translateX(0)'
+                            : index === legendTicks.length - 1
+                              ? 'translateX(-100%)'
+                              : 'translateX(-50%)',
+                      }}
+                    >
+                      {tick.label}
+                    </span>
+                  ))}
+                </div>
+                <div
+                  className="legend-ramp"
+                  style={{ gridTemplateColumns: `repeat(${activeScenario.palette.length}, minmax(0, 1fr))` }}
+                >
+                  {activeScenario.palette.map(([stop, color]) => (
+                    <i key={stop} style={{ backgroundColor: color }} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -4387,16 +4399,23 @@ function App() {
                 </div>
               </div>
 
-              {/* 2. 3D Mode Toggle */}
+              {/* 2. 3D Mode Toggle - same pattern as other option groups */}
               <div className="mobile-option-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4>{lang === 'ko' ? '3D 입체 뷰' : lang === 'vi' ? 'Chế độ 3D' : '3D View Mode'}</h4>
+                <h4>{lang === 'ko' ? '3D 입체 뷰' : lang === 'vi' ? 'Chế độ 3D' : '3D View Mode'}</h4>
+                <div className="mobile-capsule-row">
                   <button
                     type="button"
-                    className={`mobile-switch-btn ${is3DMode ? 'active' : ''}`}
-                    onClick={() => setIs3DMode((v) => !v)}
+                    className={`mobile-capsule-btn ${is3DMode ? 'active' : ''}`}
+                    onClick={() => setIs3DMode(true)}
                   >
-                    {is3DMode ? (translations[lang]['view3d'] || 'ON') : (translations[lang]['view2d'] || 'OFF')}
+                    3D
+                  </button>
+                  <button
+                    type="button"
+                    className={`mobile-capsule-btn ${!is3DMode ? 'active' : ''}`}
+                    onClick={() => setIs3DMode(false)}
+                  >
+                    2D
                   </button>
                 </div>
               </div>
@@ -4602,7 +4621,7 @@ function App() {
                     return (
                       <div className="timeline-meta" onClick={handleMetaClick} style={{ cursor: isMobile ? 'pointer' : 'default' }}>
                         <strong>{translateLiveText(activeFrame?.label ?? '샘플', lang)}</strong>
-                        {!isMobile && <span>{local} {utc && `| ${utc}`}</span>}
+                        <span>{local} {utc && `| ${utc}`}</span>
                         {isMobile && showTimebarMetaPopup && (
                           <div className="timeline-meta-popup">
                             <span>{local} {utc && `| ${utc}`}</span>
@@ -4623,7 +4642,7 @@ function App() {
                       setIsTimelinePlaying(false)
                     }}
                   />
-                  {!isMobile && <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>}
+                  <span className="timeline-source">{translateLiveText(activeScenario.source, lang)}</span>
                   <button
                     type="button"
                     className="timebar-toggle"
