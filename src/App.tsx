@@ -3118,6 +3118,12 @@ function App() {
     // 3-1. 프로젝션 전환
     try {
       map.setProjection(is3DMode ? { type: 'globe' } : { type: 'mercator' })
+      if (isMobile) {
+        map.easeTo({
+          pitch: is3DMode ? 45 : 0,
+          duration: 800
+        })
+      }
     } catch (e) {
       console.error('Failed to update map projection:', e)
     }
@@ -3138,7 +3144,7 @@ function App() {
         ['*', ['get', 'elevation'], columnReveal]
       )
     }
-  }, [mapStyleLoaded, is3DMode, columnReveal])
+  }, [mapStyleLoaded, is3DMode, columnReveal, isMobile])
 
   const startColumnReveal = () => {
     if (revealFrameRef.current) {
