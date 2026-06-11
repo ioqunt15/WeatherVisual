@@ -12,6 +12,7 @@ export type DisasterPoint = {
   lon: number
   value: number
   direction?: number // Wind direction angle in degrees (0-360)
+  isExtra?: boolean
 }
 
 export type DisasterScenario = {
@@ -141,62 +142,75 @@ export const standardStations: Omit<DisasterPoint, 'value'>[] = [
   { id: 'camau', name: '까마우', names: { vi: 'Cà Mau', en: 'Camau', ko: '까마우' }, lat: 9.1769, lon: 105.1524 },
   { id: 'hoangsa', name: 'Hoàng Sa', names: { vi: 'Quần đảo Hoàng Sa', en: 'Hoang Sa Archipelago', ko: '황사 군도' }, lat: 16.5, lon: 112.5 },
   { id: 'truongsa', name: 'Trường Sa', names: { vi: 'Quần đảo Trường Sa', en: 'Truong Sa Archipelago', ko: '쯔엉사 군도' }, lat: 10.4, lon: 114.3 },
+  { id: 'vientiane', name: '비엔티안', names: { vi: 'Viêng Chăn', en: 'Vientiane', ko: '비엔티안' }, lat: 17.9748, lon: 102.6309, isExtra: true },
+  { id: 'luangprabang', name: '루앙프라방', names: { vi: 'Luang Prabang', en: 'Luang Prabang', ko: '루앙프라방' }, lat: 19.8893, lon: 102.1347, isExtra: true },
+  { id: 'udonthani', name: '우돈타니', names: { vi: 'Udon Thani', en: 'Udon Thani', ko: '우돈타니' }, lat: 17.4138, lon: 102.7872, isExtra: true },
+  { id: 'phnompenh', name: '프놈펜', names: { vi: 'Phnom Penh', en: 'Phnom Penh', ko: '프놈펜' }, lat: 11.5564, lon: 104.9282, isExtra: true },
+  { id: 'siemreap', name: '시엠립', names: { vi: 'Siem Reap', en: 'Siem Reap', ko: '시엠립' }, lat: 13.3618, lon: 103.8606, isExtra: true },
 ]
 
 // 1. Observations
 const humidityValues: Record<string, number> = {
   hanoi: 76, haiphong: 78, quangninh: 80, langson: 72, laocai: 70, dienbien: 68, sonla: 70, hoabinh: 74, thainguyen: 75, vinhphuc: 76,
   hanam: 77, namdinh: 82, ninhbinh: 80, thanhhoa: 82, nghean: 80, hue: 84, danang: 80, quangnam: 82, quynhon: 78, nhatrang: 76,
-  dalat: 88, phanthiet: 78, hochiminh: 82, vungtau: 80, tayninh: 75, dongnai: 78, cantho: 84, phuquoc: 82, camau: 85, hoangsa: 82, truongsa: 84
+  dalat: 88, phanthiet: 78, hochiminh: 82, vungtau: 80, tayninh: 75, dongnai: 78, cantho: 84, phuquoc: 82, camau: 85, hoangsa: 82, truongsa: 84,
+  vientiane: 75, luangprabang: 72, udonthani: 74, phnompenh: 78, siemreap: 76
 }
 
 const windValues: Record<string, number> = {
   hanoi: 3.2, haiphong: 5.4, quangninh: 6.2, langson: 2.8, laocai: 2.1, dienbien: 1.8, sonla: 2.4, hoabinh: 2.8, thainguyen: 3.0, vinhphuc: 3.2,
   hanam: 3.5, namdinh: 4.8, ninhbinh: 4.2, thanhhoa: 4.5, nghean: 5.0, hue: 3.8, danang: 6.5, quangnam: 5.8, quynhon: 5.2, nhatrang: 4.8,
-  dalat: 3.0, phanthiet: 6.8, hochiminh: 4.2, vungtau: 7.2, tayninh: 3.0, dongnai: 3.5, cantho: 3.8, phuquoc: 6.5, camau: 5.8, hoangsa: 6.8, truongsa: 7.5
+  dalat: 3.0, phanthiet: 6.8, hochiminh: 4.2, vungtau: 7.2, tayninh: 3.0, dongnai: 3.5, cantho: 3.8, phuquoc: 6.5, camau: 5.8, hoangsa: 6.8, truongsa: 7.5,
+  vientiane: 2.5, luangprabang: 2.0, udonthani: 2.8, phnompenh: 3.2, siemreap: 3.0
 }
 
 const gustValues: Record<string, number> = {
   hanoi: 5.8, haiphong: 9.2, quangninh: 10.5, langson: 4.8, laocai: 3.5, dienbien: 3.0, sonla: 4.2, hoabinh: 4.8, thainguyen: 5.2, vinhphuc: 5.5,
   hanam: 6.0, namdinh: 8.2, ninhbinh: 7.5, thanhhoa: 8.0, nghean: 9.0, hue: 6.8, danang: 11.2, quangnam: 10.0, quynhon: 9.2, nhatrang: 8.5,
-  dalat: 5.0, phanthiet: 11.5, hochiminh: 7.5, vungtau: 12.8, tayninh: 5.2, dongnai: 6.0, cantho: 6.5, phuquoc: 10.5, camau: 9.8, hoangsa: 11.5, truongsa: 13.0
+  dalat: 5.0, phanthiet: 11.5, hochiminh: 7.5, vungtau: 12.8, tayninh: 5.2, dongnai: 6.0, cantho: 6.5, phuquoc: 10.5, camau: 9.8, hoangsa: 11.5, truongsa: 13.0,
+  vientiane: 4.8, luangprabang: 4.0, udonthani: 5.2, phnompenh: 5.8, siemreap: 5.5
 }
 
 const pressureValues: Record<string, number> = {
   hanoi: 1009.5, haiphong: 1009.2, quangninh: 1009.0, langson: 1008.4, laocai: 1007.2, dienbien: 1007.8, sonla: 1007.5, hoabinh: 1008.6, thainguyen: 1009.2, vinhphuc: 1009.4,
   hanam: 1009.8, namdinh: 1009.7, ninhbinh: 1009.6, thanhhoa: 1009.2, nghean: 1008.8, hue: 1008.2, danang: 1008.0, quangnam: 1008.1, quynhon: 1007.8, nhatrang: 1007.9,
-  dalat: 1002.4, phanthiet: 1007.8, hochiminh: 1008.2, vungtau: 1008.0, tayninh: 1008.1, dongnai: 1008.3, cantho: 1008.4, phuquoc: 1008.2, camau: 1008.5, hoangsa: 1007.5, truongsa: 1007.2
+  dalat: 1002.4, phanthiet: 1007.8, hochiminh: 1008.2, vungtau: 1008.0, tayninh: 1008.1, dongnai: 1008.3, cantho: 1008.4, phuquoc: 1008.2, camau: 1008.5, hoangsa: 1007.5, truongsa: 1007.2,
+  vientiane: 1008.5, luangprabang: 1007.8, udonthani: 1008.3, phnompenh: 1008.2, siemreap: 1008.0
 }
 
 const rainValues: Record<string, number> = {
   hanoi: 1.2, haiphong: 2.5, quangninh: 3.8, langson: 0.8, laocai: 1.0, dienbien: 0.6, sonla: 0.8, hoabinh: 1.4, thainguyen: 1.2, vinhphuc: 1.0,
   hanam: 1.5, namdinh: 1.8, ninhbinh: 1.6, thanhhoa: 2.2, nghean: 2.5, hue: 3.5, danang: 2.8, quangnam: 3.0, quynhon: 1.5, nhatrang: 1.2,
-  dalat: 0.8, phanthiet: 1.0, hochiminh: 4.5, vungtau: 3.5, tayninh: 4.0, dongnai: 4.2, cantho: 5.0, phuquoc: 6.0, camau: 5.5, hoangsa: 2.5, truongsa: 3.5
+  dalat: 0.8, phanthiet: 1.0, hochiminh: 4.5, vungtau: 3.5, tayninh: 4.0, dongnai: 4.2, cantho: 5.0, phuquoc: 6.0, camau: 5.5, hoangsa: 2.5, truongsa: 3.5,
+  vientiane: 1.5, luangprabang: 1.2, udonthani: 1.8, phnompenh: 2.5, siemreap: 2.0
 }
 
 const solarValues: Record<string, number> = {
   hanoi: 450, haiphong: 480, quangninh: 500, langson: 380, laocai: 320, dienbien: 400, sonla: 390, hoabinh: 420, thainguyen: 440, vinhphuc: 450,
   hanam: 470, namdinh: 490, ninhbinh: 480, thanhhoa: 520, nghean: 580, hue: 600, danang: 650, quangnam: 640, quynhon: 630, nhatrang: 660,
-  dalat: 580, phanthiet: 680, hochiminh: 720, vungtau: 730, tayninh: 710, dongnai: 700, cantho: 680, phuquoc: 650, camau: 660, hoangsa: 720, truongsa: 750
+  dalat: 580, phanthiet: 680, hochiminh: 720, vungtau: 730, tayninh: 710, dongnai: 700, cantho: 680, phuquoc: 650, camau: 660, hoangsa: 720, truongsa: 750,
+  vientiane: 480, luangprabang: 420, udonthani: 500, phnompenh: 620, siemreap: 600
 }
 
 const temperatureValues: Record<string, number> = {
   hanoi: 29.5, haiphong: 28.2, quangninh: 28.5, langson: 26.4, laocai: 25.2, dienbien: 27.8, sonla: 26.2, hoabinh: 28.8, thainguyen: 28.6, vinhphuc: 29.0,
   hanam: 29.8, namdinh: 29.2, ninhbinh: 29.4, thanhhoa: 30.2, nghean: 31.0, hue: 32.5, danang: 31.5, quangnam: 31.2, quynhon: 30.5, nhatrang: 29.8,
-  dalat: 21.4, phanthiet: 30.2, hochiminh: 32.8, vungtau: 31.0, tayninh: 33.2, dongnai: 32.5, cantho: 31.8, phuquoc: 30.6, camau: 31.2, hoangsa: 28.5, truongsa: 29.2
+  dalat: 21.4, phanthiet: 30.2, hochiminh: 32.8, vungtau: 31.0, tayninh: 33.2, dongnai: 32.5, cantho: 31.8, phuquoc: 30.6, camau: 31.2, hoangsa: 28.5, truongsa: 29.2,
+  vientiane: 28.5, luangprabang: 26.2, udonthani: 29.0, phnompenh: 31.5, siemreap: 30.8
 }
 
-// 2. Forecasts
 const forecastTempValues: Record<string, number> = {
   hanoi: 31.5, haiphong: 30.2, quangninh: 30.5, langson: 28.4, laocai: 27.2, dienbien: 29.8, sonla: 28.2, hoabinh: 30.8, thainguyen: 30.6, vinhphuc: 31.0,
   hanam: 31.8, namdinh: 31.2, ninhbinh: 31.4, thanhhoa: 32.2, nghean: 33.0, hue: 34.5, danang: 33.5, quangnam: 33.2, quynhon: 32.5, nhatrang: 31.8,
-  dalat: 23.4, phanthiet: 32.2, hochiminh: 34.8, vungtau: 33.0, tayninh: 35.2, dongnai: 34.5, cantho: 33.8, phuquoc: 32.6, camau: 33.2, hoangsa: 29.5, truongsa: 30.2
+  dalat: 23.4, phanthiet: 32.2, hochiminh: 34.8, vungtau: 33.0, tayninh: 35.2, dongnai: 34.5, cantho: 33.8, phuquoc: 32.6, camau: 33.2, hoangsa: 29.5, truongsa: 30.2,
+  vientiane: 30.5, luangprabang: 28.2, udonthani: 31.0, phnompenh: 33.5, siemreap: 32.8
 }
 
 const forecastRainValues: Record<string, number> = {
   hanoi: 5.0, haiphong: 10.0, quangninh: 12.0, langson: 3.0, laocai: 5.0, dienbien: 2.0, sonla: 4.0, hoabinh: 8.0, thainguyen: 6.0, vinhphuc: 5.0,
   hanam: 10.0, namdinh: 12.0, ninhbinh: 10.0, thanhhoa: 15.0, nghean: 18.0, hue: 25.0, danang: 20.0, quangnam: 22.0, quynhon: 10.0, nhatrang: 8.0,
-  dalat: 4.0, phanthiet: 6.0, hochiminh: 30.0, vungtau: 22.0, tayninh: 25.0, dongnai: 28.0, cantho: 35.0, phuquoc: 45.0, camau: 40.0, hoangsa: 15.0, truongsa: 22.0
+  dalat: 4.0, phanthiet: 6.0, hochiminh: 30.0, vungtau: 22.0, tayninh: 25.0, dongnai: 28.0, cantho: 35.0, phuquoc: 45.0, camau: 40.0, hoangsa: 15.0, truongsa: 22.0,
+  vientiane: 4.0, luangprabang: 3.0, udonthani: 5.0, phnompenh: 12.0, siemreap: 8.0
 }
 
 const forecastWindValues: Record<string, number> = { ...windValues }
@@ -205,58 +219,66 @@ const forecastHumidityValues: Record<string, number> = { ...humidityValues }
 const cloudValues: Record<string, number> = {
   hanoi: 65, haiphong: 70, quangninh: 75, langson: 58, laocai: 50, dienbien: 45, sonla: 48, hoabinh: 55, thainguyen: 60, vinhphuc: 62,
   hanam: 64, namdinh: 78, ninhbinh: 74, thanhhoa: 80, nghean: 75, hue: 82, danang: 68, quangnam: 72, quynhon: 55, nhatrang: 50,
-  dalat: 85, phanthiet: 45, hochiminh: 80, vungtau: 78, tayninh: 65, dongnai: 70, cantho: 82, phuquoc: 85, camau: 88, hoangsa: 60, truongsa: 65
+  dalat: 85, phanthiet: 45, hochiminh: 80, vungtau: 78, tayninh: 65, dongnai: 70, cantho: 82, phuquoc: 85, camau: 88, hoangsa: 60, truongsa: 65,
+  vientiane: 60, luangprabang: 55, udonthani: 58, phnompenh: 68, siemreap: 62
 }
 
-// 3. Danger Indices
 const heatValues: Record<string, number> = {
   hanoi: 34, haiphong: 32, quangninh: 32, langson: 29, laocai: 27, dienbien: 30, sonla: 28, hoabinh: 33, thainguyen: 32, vinhphuc: 33,
   hanam: 34, namdinh: 33, ninhbinh: 33, thanhhoa: 35, nghean: 37, hue: 39, danang: 38, quangnam: 37, quynhon: 36, nhatrang: 34,
-  dalat: 22, phanthiet: 35, hochiminh: 39, vungtau: 36, tayninh: 40, dongnai: 39, cantho: 38, phuquoc: 36, camau: 37, hoangsa: 33, truongsa: 34
+  dalat: 22, phanthiet: 35, hochiminh: 39, vungtau: 36, tayninh: 40, dongnai: 39, cantho: 38, phuquoc: 36, camau: 37, hoangsa: 33, truongsa: 34,
+  vientiane: 33, luangprabang: 30, udonthani: 34, phnompenh: 38, siemreap: 37
 }
 
 const fireValues: Record<string, number> = {
   hanoi: 25, haiphong: 20, quangninh: 18, langson: 35, laocai: 38, dienbien: 42, sonla: 40, hoabinh: 30, thainguyen: 28, vinhphuc: 25,
   hanam: 24, namdinh: 20, ninhbinh: 22, thanhhoa: 35, nghean: 45, hue: 50, danang: 40, quangnam: 42, quynhon: 48, nhatrang: 45,
-  dalat: 55, phanthiet: 52, hochiminh: 30, vungtau: 28, tayninh: 35, dongnai: 32, cantho: 25, phuquoc: 22, camau: 20, hoangsa: 10, truongsa: 8
+  dalat: 55, phanthiet: 52, hochiminh: 30, vungtau: 28, tayninh: 35, dongnai: 32, cantho: 25, phuquoc: 22, camau: 20, hoangsa: 10, truongsa: 8,
+  vientiane: 30, luangprabang: 35, udonthani: 32, phnompenh: 24, siemreap: 28
 }
 
 const uvValues: Record<string, number> = {
   hanoi: 6.5, haiphong: 7.0, quangninh: 7.2, langson: 5.8, laocai: 5.0, dienbien: 6.2, sonla: 6.0, hoabinh: 6.4, thainguyen: 6.5, vinhphuc: 6.8,
   hanam: 7.0, namdinh: 7.2, ninhbinh: 7.0, thanhhoa: 8.0, nghean: 8.5, hue: 9.0, danang: 9.5, quangnam: 9.2, quynhon: 9.0, nhatrang: 9.2,
-  dalat: 7.8, phanthiet: 9.5, hochiminh: 10.2, vungtau: 10.5, tayninh: 9.8, dongnai: 9.5, cantho: 10.0, phuquoc: 9.8, camau: 9.5, hoangsa: 9.5, truongsa: 10.0
+  dalat: 7.8, phanthiet: 9.5, hochiminh: 10.2, vungtau: 10.5, tayninh: 9.8, dongnai: 9.5, cantho: 10.0, phuquoc: 9.8, camau: 9.5, hoangsa: 9.5, truongsa: 10.0,
+  vientiane: 7.2, luangprabang: 6.8, udonthani: 7.5, phnompenh: 9.0, siemreap: 8.8
 }
 
 const aqiValues: Record<string, number> = {
   hanoi: 154, haiphong: 120, quangninh: 92, langson: 64, laocai: 48, dienbien: 42, sonla: 52, hoabinh: 76, thainguyen: 110, vinhphuc: 105,
   hanam: 115, namdinh: 88, ninhbinh: 84, thanhhoa: 95, nghean: 102, hue: 58, danang: 46, quangnam: 52, quynhon: 62, nhatrang: 55,
-  dalat: 32, phanthiet: 60, hochiminh: 142, vungtau: 78, tayninh: 115, dongnai: 98, cantho: 85, phuquoc: 50, camau: 42, hoangsa: 28, truongsa: 25
+  dalat: 32, phanthiet: 60, hochiminh: 142, vungtau: 78, tayninh: 115, dongnai: 98, cantho: 85, phuquoc: 50, camau: 42, hoangsa: 28, truongsa: 25,
+  vientiane: 85, luangprabang: 72, udonthani: 90, phnompenh: 110, siemreap: 95
 }
 
 const landslideValues: Record<string, number> = {
   hanoi: 10, haiphong: 8, quangninh: 30, langson: 65, laocai: 88, dienbien: 84, sonla: 80, hoabinh: 68, thainguyen: 45, vinhphuc: 25,
   hanam: 5, namdinh: 5, ninhbinh: 12, thanhhoa: 48, nghean: 55, hue: 60, danang: 40, quangnam: 62, quynhon: 35, nhatrang: 25,
-  dalat: 65, phanthiet: 15, hochiminh: 5, vungtau: 10, tayninh: 20, dongnai: 25, cantho: 5, phuquoc: 15, camau: 5, hoangsa: 5, truongsa: 5
+  dalat: 65, phanthiet: 15, hochiminh: 5, vungtau: 10, tayninh: 20, dongnai: 25, cantho: 5, phuquoc: 15, camau: 5, hoangsa: 5, truongsa: 5,
+  vientiane: 35, luangprabang: 55, udonthani: 12, phnompenh: 5, siemreap: 8
 }
 
 const floodValues: Record<string, number> = {
   hanoi: 62, haiphong: 68, quangninh: 52, langson: 20, laocai: 15, dienbien: 12, sonla: 10, hoabinh: 35, thainguyen: 40, vinhphuc: 42,
   hanam: 58, namdinh: 72, ninhbinh: 68, thanhhoa: 55, nghean: 58, hue: 78, danang: 65, quangnam: 60, quynhon: 52, nhatrang: 48,
-  dalat: 22, phanthiet: 45, hochiminh: 82, vungtau: 70, tayninh: 35, dongnai: 48, cantho: 75, phuquoc: 58, camau: 78, hoangsa: 42, truongsa: 45
+  dalat: 22, phanthiet: 45, hochiminh: 82, vungtau: 70, tayninh: 35, dongnai: 48, cantho: 75, phuquoc: 58, camau: 78, hoangsa: 42, truongsa: 45,
+  vientiane: 42, luangprabang: 35, udonthani: 48, phnompenh: 58, siemreap: 52
 }
 
 const droughtValues: Record<string, number> = {
   hanoi: 25, haiphong: 22, quangninh: 20, langson: 32, laocai: 35, dienbien: 38, sonla: 35, hoabinh: 28, thainguyen: 26, vinhphuc: 24,
   hanam: 28, namdinh: 20, ninhbinh: 22, thanhhoa: 38, nghean: 48, hue: 52, danang: 45, quangnam: 48, quynhon: 68, nhatrang: 65,
-  dalat: 40, phanthiet: 82, hochiminh: 72, vungtau: 68, tayninh: 78, dongnai: 65, cantho: 85, phuquoc: 70, camau: 88, hoangsa: 50, truongsa: 52
+  dalat: 40, phanthiet: 82, hochiminh: 72, vungtau: 68, tayninh: 78, dongnai: 65, cantho: 85, phuquoc: 70, camau: 88, hoangsa: 50, truongsa: 52,
+  vientiane: 32, luangprabang: 38, udonthani: 35, phnompenh: 58, siemreap: 55
 }
 
-// 4. Marine & Special
 const typhoonValues: Record<string, number> = {
   hanoi: 3.2, haiphong: 9.8, quangninh: 12.5, langson: 2.8, laocai: 1.8, dienbien: 1.2, sonla: 2.0, hoabinh: 3.2, thainguyen: 3.0, vinhphuc: 3.2,
   hanam: 4.2, namdinh: 10.5, ninhbinh: 8.8, thanhhoa: 12.0, nghean: 15.2, hue: 28.5, danang: 48.2, quangnam: 35.8, quynhon: 24.2, nhatrang: 15.8,
-  dalat: 6.5, phanthiet: 14.2, hochiminh: 5.2, vungtau: 12.5, tayninh: 3.0, dongnai: 4.8, cantho: 5.0, phuquoc: 6.8, camau: 8.5, hoangsa: 65.5, truongsa: 18.2
+  dalat: 6.5, phanthiet: 14.2, hochiminh: 5.2, vungtau: 12.5, tayninh: 3.0, dongnai: 4.8, cantho: 5.0, phuquoc: 6.8, camau: 8.5, hoangsa: 65.5, truongsa: 18.2,
+  vientiane: 3.5, luangprabang: 2.8, udonthani: 3.8, phnompenh: 4.8, siemreap: 4.2
 }
+
 
 function buildPoints(values: Record<string, number>, isWindOrTyphoon = false): DisasterPoint[] {
   return standardStations.map((station) => {

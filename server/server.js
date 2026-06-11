@@ -77,7 +77,12 @@ var standardStations = [
   { id: "phuquoc", name: "\uD478\uAFB8\uC625", names: { vi: "Ph\xFA Qu\u1ED1c", en: "Phuquoc", ko: "\uD478\uAFB8\uC625" }, lat: 10.2899, lon: 103.984 },
   { id: "camau", name: "\uAE4C\uB9C8\uC6B0", names: { vi: "C\xE0 Mau", en: "Camau", ko: "\uAE4C\uB9C8\uC6B0" }, lat: 9.1769, lon: 105.1524 },
   { id: "hoangsa", name: "Ho\xE0ng Sa", names: { vi: "Qu\u1EA7n \u0111\u1EA3o Ho\xE0ng Sa", en: "Hoang Sa Archipelago", ko: "\uD669\uC0AC \uAD70\uB3C4" }, lat: 16.5, lon: 112.5 },
-  { id: "truongsa", name: "Tr\u01B0\u1EDDng Sa", names: { vi: "Qu\u1EA7n \u0111\u1EA3o Tr\u01B0\u1EDDng Sa", en: "Truong Sa Archipelago", ko: "\uCBD4\uC5C9\uC0AC \uAD70\uB3C4" }, lat: 10.4, lon: 114.3 }
+  { id: "truongsa", name: "Tr\u01B0\u1EDDng Sa", names: { vi: "Qu\u1EA7n \u0111\u1EA3o Tr\u01B0\u1EDDng Sa", en: "Truong Sa Archipelago", ko: "\uCBD4\uC5C9\uC0AC \uAD70\uB3C4" }, lat: 10.4, lon: 114.3 },
+  { id: "vientiane", name: "\uBE44\uC5D4\uD2F0\uC548", names: { vi: "Vi\xEAng Ch\u0103n", en: "Vientiane", ko: "\uBE44\uC5D4\uD2F0\uC548" }, lat: 17.9748, lon: 102.6309, isExtra: true },
+  { id: "luangprabang", name: "\uB8E8\uC559\uD504\uB77C\uBC29", names: { vi: "Luang Prabang", en: "Luang Prabang", ko: "\uB8E8\uC559\uD504\uB77C\uBC29" }, lat: 19.8893, lon: 102.1347, isExtra: true },
+  { id: "udonthani", name: "\uC6B0\uB3C8\uD0C0\uB2C8", names: { vi: "Udon Thani", en: "Udon Thani", ko: "\uC6B0\uB3C8\uD0C0\uB2C8" }, lat: 17.4138, lon: 102.7872, isExtra: true },
+  { id: "phnompenh", name: "\uD504\uB188\uD39C", names: { vi: "Phnom Penh", en: "Phnom Penh", ko: "\uD504\uB188\uD39C" }, lat: 11.5564, lon: 104.9282, isExtra: true },
+  { id: "siemreap", name: "\uC2DC\uC5E0\uB9BD", names: { vi: "Siem Reap", en: "Siem Reap", ko: "\uC2DC\uC5E0\uB9BD" }, lat: 13.3618, lon: 103.8606, isExtra: true }
 ];
 var humidityValues = {
   hanoi: 76,
@@ -110,7 +115,12 @@ var humidityValues = {
   phuquoc: 82,
   camau: 85,
   hoangsa: 82,
-  truongsa: 84
+  truongsa: 84,
+  vientiane: 75,
+  luangprabang: 72,
+  udonthani: 74,
+  phnompenh: 78,
+  siemreap: 76
 };
 var windValues = {
   hanoi: 3.2,
@@ -143,7 +153,12 @@ var windValues = {
   phuquoc: 6.5,
   camau: 5.8,
   hoangsa: 6.8,
-  truongsa: 7.5
+  truongsa: 7.5,
+  vientiane: 2.5,
+  luangprabang: 2,
+  udonthani: 2.8,
+  phnompenh: 3.2,
+  siemreap: 3
 };
 var gustValues = {
   hanoi: 5.8,
@@ -176,7 +191,12 @@ var gustValues = {
   phuquoc: 10.5,
   camau: 9.8,
   hoangsa: 11.5,
-  truongsa: 13
+  truongsa: 13,
+  vientiane: 4.8,
+  luangprabang: 4,
+  udonthani: 5.2,
+  phnompenh: 5.8,
+  siemreap: 5.5
 };
 var pressureValues = {
   hanoi: 1009.5,
@@ -209,7 +229,12 @@ var pressureValues = {
   phuquoc: 1008.2,
   camau: 1008.5,
   hoangsa: 1007.5,
-  truongsa: 1007.2
+  truongsa: 1007.2,
+  vientiane: 1008.5,
+  luangprabang: 1007.8,
+  udonthani: 1008.3,
+  phnompenh: 1008.2,
+  siemreap: 1008
 };
 var rainValues = {
   hanoi: 1.2,
@@ -242,7 +267,12 @@ var rainValues = {
   phuquoc: 6,
   camau: 5.5,
   hoangsa: 2.5,
-  truongsa: 3.5
+  truongsa: 3.5,
+  vientiane: 1.5,
+  luangprabang: 1.2,
+  udonthani: 1.8,
+  phnompenh: 2.5,
+  siemreap: 2
 };
 var solarValues = {
   hanoi: 450,
@@ -275,7 +305,12 @@ var solarValues = {
   phuquoc: 650,
   camau: 660,
   hoangsa: 720,
-  truongsa: 750
+  truongsa: 750,
+  vientiane: 480,
+  luangprabang: 420,
+  udonthani: 500,
+  phnompenh: 620,
+  siemreap: 600
 };
 var temperatureValues = {
   hanoi: 29.5,
@@ -308,7 +343,12 @@ var temperatureValues = {
   phuquoc: 30.6,
   camau: 31.2,
   hoangsa: 28.5,
-  truongsa: 29.2
+  truongsa: 29.2,
+  vientiane: 28.5,
+  luangprabang: 26.2,
+  udonthani: 29,
+  phnompenh: 31.5,
+  siemreap: 30.8
 };
 var forecastTempValues = {
   hanoi: 31.5,
@@ -341,7 +381,12 @@ var forecastTempValues = {
   phuquoc: 32.6,
   camau: 33.2,
   hoangsa: 29.5,
-  truongsa: 30.2
+  truongsa: 30.2,
+  vientiane: 30.5,
+  luangprabang: 28.2,
+  udonthani: 31,
+  phnompenh: 33.5,
+  siemreap: 32.8
 };
 var forecastRainValues = {
   hanoi: 5,
@@ -374,7 +419,12 @@ var forecastRainValues = {
   phuquoc: 45,
   camau: 40,
   hoangsa: 15,
-  truongsa: 22
+  truongsa: 22,
+  vientiane: 4,
+  luangprabang: 3,
+  udonthani: 5,
+  phnompenh: 12,
+  siemreap: 8
 };
 var forecastWindValues = { ...windValues };
 var forecastHumidityValues = { ...humidityValues };
@@ -409,7 +459,12 @@ var cloudValues = {
   phuquoc: 85,
   camau: 88,
   hoangsa: 60,
-  truongsa: 65
+  truongsa: 65,
+  vientiane: 60,
+  luangprabang: 55,
+  udonthani: 58,
+  phnompenh: 68,
+  siemreap: 62
 };
 var heatValues = {
   hanoi: 34,
@@ -442,7 +497,12 @@ var heatValues = {
   phuquoc: 36,
   camau: 37,
   hoangsa: 33,
-  truongsa: 34
+  truongsa: 34,
+  vientiane: 33,
+  luangprabang: 30,
+  udonthani: 34,
+  phnompenh: 38,
+  siemreap: 37
 };
 var fireValues = {
   hanoi: 25,
@@ -475,7 +535,12 @@ var fireValues = {
   phuquoc: 22,
   camau: 20,
   hoangsa: 10,
-  truongsa: 8
+  truongsa: 8,
+  vientiane: 30,
+  luangprabang: 35,
+  udonthani: 32,
+  phnompenh: 24,
+  siemreap: 28
 };
 var uvValues = {
   hanoi: 6.5,
@@ -508,7 +573,12 @@ var uvValues = {
   phuquoc: 9.8,
   camau: 9.5,
   hoangsa: 9.5,
-  truongsa: 10
+  truongsa: 10,
+  vientiane: 7.2,
+  luangprabang: 6.8,
+  udonthani: 7.5,
+  phnompenh: 9,
+  siemreap: 8.8
 };
 var aqiValues = {
   hanoi: 154,
@@ -541,7 +611,12 @@ var aqiValues = {
   phuquoc: 50,
   camau: 42,
   hoangsa: 28,
-  truongsa: 25
+  truongsa: 25,
+  vientiane: 85,
+  luangprabang: 72,
+  udonthani: 90,
+  phnompenh: 110,
+  siemreap: 95
 };
 var landslideValues = {
   hanoi: 10,
@@ -574,7 +649,12 @@ var landslideValues = {
   phuquoc: 15,
   camau: 5,
   hoangsa: 5,
-  truongsa: 5
+  truongsa: 5,
+  vientiane: 35,
+  luangprabang: 55,
+  udonthani: 12,
+  phnompenh: 5,
+  siemreap: 8
 };
 var floodValues = {
   hanoi: 62,
@@ -607,7 +687,12 @@ var floodValues = {
   phuquoc: 58,
   camau: 78,
   hoangsa: 42,
-  truongsa: 45
+  truongsa: 45,
+  vientiane: 42,
+  luangprabang: 35,
+  udonthani: 48,
+  phnompenh: 58,
+  siemreap: 52
 };
 var droughtValues = {
   hanoi: 25,
@@ -640,7 +725,12 @@ var droughtValues = {
   phuquoc: 70,
   camau: 88,
   hoangsa: 50,
-  truongsa: 52
+  truongsa: 52,
+  vientiane: 32,
+  luangprabang: 38,
+  udonthani: 35,
+  phnompenh: 58,
+  siemreap: 55
 };
 var typhoonValues = {
   hanoi: 3.2,
@@ -673,7 +763,12 @@ var typhoonValues = {
   phuquoc: 6.8,
   camau: 8.5,
   hoangsa: 65.5,
-  truongsa: 18.2
+  truongsa: 18.2,
+  vientiane: 3.5,
+  luangprabang: 2.8,
+  udonthani: 3.8,
+  phnompenh: 4.8,
+  siemreap: 4.2
 };
 function buildPoints(values, isWindOrTyphoon = false) {
   return standardStations.map((station) => {

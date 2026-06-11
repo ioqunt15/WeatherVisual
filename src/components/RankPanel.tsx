@@ -103,7 +103,7 @@ export const RankPanel: React.FC = () => {
               },
               value: feature.properties.value,
             }))
-          : activeScenario.points
+          : activeScenario.points.filter((pt) => !(pt as any).isExtra)
 
       return [...points]
         .filter(() => true)
@@ -244,8 +244,12 @@ export const RankPanel: React.FC = () => {
                   <span className="danger-badge">{historicalTyphoons.find(t => t.id === selectedTyphoonId)?.category[lang]}</span>
                 </div>
                 <div className="typhoon-stats-grid">
+                  <div className="typhoon-stat-item" style={{ gridColumn: 'span 2' }}>
+                    <span className="stat-label">{lang === 'ko' ? '태풍 발생기간' : lang === 'vi' ? 'Thời gian hoạt động' : 'Duration'}</span>
+                    <span className="stat-value">{historicalTyphoons.find(t => t.id === selectedTyphoonId)?.duration[lang]}</span>
+                  </div>
                   <div className="typhoon-stat-item">
-                    <span className="stat-label">{lang === 'ko' ? '현재 위치' : lang === 'vi' ? 'Vị trí hiện tại' : 'Position'}</span>
+                    <span className="stat-label">{lang === 'ko' ? '해당 지점' : lang === 'vi' ? 'Địa điểm' : 'Location'}</span>
                     <span className="stat-value">{typhoonData.lat.toFixed(1)}°N, {typhoonData.lon.toFixed(1)}°E</span>
                   </div>
                   <div className="typhoon-stat-item">

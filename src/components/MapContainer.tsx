@@ -229,6 +229,7 @@ export const MapContainer: React.FC = () => {
   const calloutPoints = useMemo<CalloutPoint[]>(
     () =>
       [...activeScenario.points]
+        .filter((point) => !(point as any).isExtra)
         .sort((a, b) => b.lat - a.lat)
         .map((point, index) => {
           const layout = CALLOUT_LAYOUTS[point.id] ?? {
@@ -471,6 +472,7 @@ export const MapContainer: React.FC = () => {
           wind: pt.wind,
           pressure: pt.pressure,
           timeLabel: pt.timeLabel,
+          timeLabelCompact: pt.timeLabel.slice(5),
           color: pt.wind < 17 ? '#4db6ac' :
                  pt.wind < 25 ? '#ffd54f' :
                  pt.wind < 33 ? '#ff9800' :
@@ -1142,6 +1144,30 @@ export const MapContainer: React.FC = () => {
           })
         }
 
+        // typhoon point time labels
+        if (!map.getLayer('typhoon-track-time-labels')) {
+          map.addLayer({
+            id: 'typhoon-track-time-labels',
+            type: 'symbol',
+            source: 'typhoon-source',
+            filter: ['==', ['get', 'type'], 'track-point'],
+            layout: {
+              'visibility': (scenarioId === 'typhoon' && selectedTyphoonId !== 'live') ? 'visible' : 'none',
+              'text-field': ['get', 'timeLabelCompact'],
+              'text-size': 8.5,
+              'text-offset': [0, 1.2],
+              'text-anchor': 'top',
+              'text-allow-overlap': false,
+              'text-ignore-placement': false,
+            },
+            paint: {
+              'text-color': '#e0e0e0',
+              'text-halo-color': '#000000',
+              'text-halo-width': 1.5,
+            }
+          })
+        }
+
         // Force final update for sources
         const gridSource = map.getSource('vhwis-grid-source') as maplibregl.GeoJSONSource
         if (gridSource) gridSource.setData(gridGeoJson as any)
@@ -1214,7 +1240,8 @@ export const MapContainer: React.FC = () => {
         'typhoon-wind-radius-fill',
         'typhoon-wind-radius-outline',
         'typhoon-track-points',
-        'typhoon-track-labels'
+        'typhoon-track-labels',
+        'typhoon-track-time-labels'
       ]
       for (const layerId of typhoonLayers) {
         if (map.getLayer(layerId)) {
@@ -1314,7 +1341,16 @@ export const MapContainer: React.FC = () => {
     let animationId: number
     let running = true
 
-    const particleCount = 60
+    const getBoundsWithMargin = () => {
+      const bounds = map.getBounds()
+      const west = Math.max(94.0, bounds.getWest() - 2.0)
+      const east = Math.min(118.0, bounds.getEast() + 2.0)
+      const south = Math.max(5.0, bounds.getSouth() - 2.0)
+      const north = Math.min(25.0, bounds.getNorth() + 2.0)
+      return { west, east, south, north }
+    }
+
+    const maxParticles = 350
     const particles: Array<{
       lon: number
       lat: number
@@ -1332,23 +1368,6 @@ export const MapContainer: React.FC = () => {
       }
     }
     resizeCanvas()
-
-    const getRandomGridPos = () => {
-      const currentGrid = gridCellsRef.current
-      if (currentGrid && currentGrid.length > 0) {
-        const cell = currentGrid[Math.floor(Math.random() * currentGrid.length)]
-        const jitterLon = (Math.random() - 0.5) * 0.4
-        const jitterLat = (Math.random() - 0.5) * 0.4
-        return {
-          lon: cell.lon + jitterLon,
-          lat: cell.lat + jitterLat
-        }
-      }
-      return {
-        lon: 102 + Math.random() * 8,
-        lat: 8 + Math.random() * 15
-      }
-    }
 
     const estimateValueLocal = (lon: number, lat: number, points: DisasterPoint[]) => {
       let sumVal = 0
@@ -1384,9 +1403,16 @@ export const MapContainer: React.FC = () => {
     }
 
     // Initialize particles
-    for (let i = 0; i < particleCount; i++) {
-      const pos = getRandomGridPos()
-      const life = 300 + Math.random() * 100
+    const { west: initW, east: initE, south: initS, north: initN } = getBoundsWithMargin()
+    const initialGetRandomGridPos = () => {
+      const lon = initW + Math.random() * (initE - initW)
+      const lat = initS + Math.random() * (initN - initS)
+      return { lon, lat }
+    }
+
+    for (let i = 0; i < maxParticles; i++) {
+      const pos = initialGetRandomGridPos()
+      const life = 200 + Math.random() * 150
       const lengthScale = 1.0 + Math.random() * 0.2
       particles.push({
         lon: pos.lon,
@@ -1406,9 +1432,20 @@ export const MapContainer: React.FC = () => {
 
         const points = activeScenarioPointsRef.current
         const maxVal = activeScenarioMaxValRef.current || 25
-        const width = canvas.width
-        const height = canvas.height
         const zoom = map.getZoom()
+
+        let activeParticleCount = 300
+        if (zoom > 7.5) activeParticleCount = 35
+        else if (zoom > 6.5) activeParticleCount = 70
+        else if (zoom > 5.5) activeParticleCount = 140
+        else if (zoom > 4.5) activeParticleCount = 220
+
+        const { west, east, south, north } = getBoundsWithMargin()
+        const getRandomGridPos = () => {
+          const lon = west + Math.random() * (east - west)
+          const lat = south + Math.random() * (north - south)
+          return { lon, lat }
+        }
 
         const degPerPixel = 600 / (Math.pow(2, zoom) * 256)
         const pitchRad = (map.getPitch() * Math.PI) / 180
@@ -1416,23 +1453,21 @@ export const MapContainer: React.FC = () => {
         const heightOffset = 18000 * pixelsPerMeter * Math.sin(pitchRad)
         const zoomScale = zoom > 6 ? 1.0 + (zoom - 6) * 0.45 : 1.0
 
-        for (let i = 0; i < particleCount; i++) {
+        for (let i = 0; i < activeParticleCount; i++) {
           const p = particles[i]
-          let posScreen = map.project([p.lon, p.lat])
 
+          const isOutside = p.lon < west || p.lon > east || p.lat < south || p.lat > north
           if (
             p.age >= p.life ||
-            posScreen.x < 0 || posScreen.x > width ||
-            posScreen.y < 0 || posScreen.y > height
+            isOutside
           ) {
             const newPos = getRandomGridPos()
             p.lon = newPos.lon
             p.lat = newPos.lat
-            p.life = 300 + Math.random() * 100
+            p.life = 200 + Math.random() * 150
             p.age = 0
             p.trail = [{ lon: p.lon, lat: p.lat }]
             p.lengthScale = 0.5 + Math.random() * 0.8
-            posScreen = map.project([p.lon, p.lat])
           }
 
           const speed = estimateValueLocal(p.lon, p.lat, points)
