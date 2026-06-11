@@ -2,7 +2,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createVhwisCacheMiddleware, scheduleVhwisCacheWarmup } from './kmaCache.ts'
+import { createVhwisCacheMiddleware, scheduleVhwisCacheWarmup, closeRedisConnection } from './kmaCache.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -84,11 +84,16 @@ server.listen(PORT, () => {
   console.log(`[VHWIS Production Server] Running at http://localhost:${PORT}`)
 })
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Shutting down server...')
+// Graceful shutdown helper
+function handleShutdown(signal: string) {
+  console.log(`Received ${signal}. Shutting down server...`)
   stopWarmup()
+  closeRedisConnection()
   server.close(() => {
+    console.log('Server closed. Exiting process.')
     process.exit(0)
   })
-})
+}
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'))
+process.on('SIGINT', () => handleShutdown('SIGINT'))

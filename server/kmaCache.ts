@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { DisasterPoint, DisasterScenario } from '../src/data/scenarios'
 import { scenarios } from '../src/data/scenarios'
+import Redis from 'ioredis'
 
 type KmaFrame = {
   id: string
@@ -29,6 +30,35 @@ type CacheEntry = {
 type TimelineOptions = {
   start?: string
   end?: string
+}
+
+// ─── Redis Setup with graceful memory fallback ─────────────────────────────
+const REDIS_URL = process.env.REDIS_URL
+let redisClient: Redis | null = null
+
+if (REDIS_URL) {
+  try {
+    redisClient = new Redis(REDIS_URL, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+    })
+    redisClient.on('error', (err) => {
+      console.warn('[vhwis-redis] Redis error, falling back to local memory cache:', err.message)
+    })
+    redisClient.on('connect', () => {
+      console.log('[vhwis-redis] Connected to Redis successfully.')
+    })
+  } catch (err) {
+    console.warn('[vhwis-redis] Failed to initialize Redis client:', err)
+  }
+}
+
+export function closeRedisConnection() {
+  if (redisClient) {
+    console.log('[vhwis-redis] Closing Redis connection...')
+    redisClient.disconnect()
+    redisClient = null
+  }
 }
 
 const cache = new Map<string, CacheEntry>()
@@ -88,8 +118,6 @@ function getTyphoonCenter(epoch: number): { lat: number; lon: number } {
 }
 
 // ─── 공유 raw 데이터 캐시 (Open-Meteo API 호출 최소화) ─────────────────────────
-// 모든 일반 시나리오(rain 포함)는 완전히 동일한 lat/lon으로 동일한 URL을 호출함.
-// raw 응답을 공유해서 API 호출을 시나리오 수(20+)개→2개(일반/AQI)로 줄임.
 type RawDataCache = {
   expiresAt: number
   promise?: Promise<any[]>
@@ -101,13 +129,27 @@ const RAW_CACHE_TTL = 2 * 60 * 60 * 1000  // 2시간
 
 async function fetchRawOpenMeteo(type: 'forecast' | 'aqi', lats: string, lons: string, forceRefresh = false): Promise<any[]> {
   const now = Date.now()
-  const cached = rawCache.get(type)
+  const cacheKey = `raw:${type}:${lats}:${lons}`
 
-  if (!forceRefresh && cached?.data && cached.expiresAt > now) {
-    return cached.data
-  }
-  if (!forceRefresh && cached?.promise && cached.expiresAt > now) {
-    return cached.promise
+  if (!forceRefresh) {
+    if (redisClient && redisClient.status === 'ready') {
+      try {
+        const cachedVal = await redisClient.get(cacheKey)
+        if (cachedVal) {
+          return JSON.parse(cachedVal)
+        }
+      } catch (err) {
+        console.warn('[vhwis-redis] Failed to fetch rawCache from Redis:', err)
+      }
+    }
+
+    const cached = rawCache.get(type)
+    if (cached?.data && cached.expiresAt > now) {
+      return cached.data
+    }
+    if (cached?.promise && cached.expiresAt > now) {
+      return cached.promise
+    }
   }
 
   const url = type === 'aqi'
@@ -123,11 +165,19 @@ async function fetchRawOpenMeteo(type: 'forecast' | 'aqi', lats: string, lons: s
       if (!res.ok) throw new Error(`Open-Meteo request failed: ${res.status}`)
       const data = await res.json()
       const arr = Array.isArray(data) ? data : [data]
+
+      if (redisClient && redisClient.status === 'ready') {
+        try {
+          await redisClient.set(cacheKey, JSON.stringify(arr), 'PX', RAW_CACHE_TTL)
+        } catch (err) {
+          console.warn('[vhwis-redis] Failed to set rawCache in Redis:', err)
+        }
+      }
+
       rawCache.set(type, { data: arr, expiresAt })
       return arr
     })
     .catch((err) => {
-      // 429/network 에러: 만료 캐시라도 반환
       const stale = rawCache.get(type)
       if (stale?.data) {
         console.warn(`[vhwis-cache] Open-Meteo ${type} error, serving stale raw cache:`, err)
@@ -168,10 +218,8 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
   const frames: KmaFrame[] = []
 
   if (scenarioId === 'rain') {
-    // rain 시나리오: 항상 누적 강수량 표시 (현재 시점 기준 과거 12시간 누적)
     const ACCUM_HOURS = 12
 
-    // "실황" 프레임: 현재 시점 기준 12h 누적
     const nowAccumPoints = targets.map((point, idx) => {
       const res = responses[idx]
       let rainSum = 0
@@ -192,7 +240,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
       successfulPoints: nowAccumPoints.length,
     })
 
-    // 예보 프레임 1~6시간: 해당 시점 기준 과거 12h 누적
     for (let offset = 1; offset <= 6; offset++) {
       const forecastIndex = baseIndex + offset
       if (forecastIndex >= firstRes.hourly.time.length) break
@@ -218,7 +265,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
       })
     }
   } else {
-    // Helper function to extract point data for a given index
     const getPointsForFrame = (hourlyIndex: number | null, timeString: string) => {
       const currentEpoch = Math.floor(new Date(timeString).getTime() / 3600000)
       const typhoonCenter = getTyphoonCenter(currentEpoch)
@@ -245,7 +291,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
           const uvVal = currentObj ? currentObj.uv_index : hourlyObj.uv_index[hourlyIndex!]
           const aqiVal = isAqi ? (currentObj ? currentObj.us_aqi : hourlyObj.us_aqi[hourlyIndex!]) : 0
 
-          // Apply metric calculations
           if (scenarioId === 'temperature') val = tempVal
           else if (scenarioId === 'humidity') val = humidVal
           else if (scenarioId === 'wind') {
@@ -268,7 +313,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
           else if (scenarioId === 'uv') val = uvVal
           else if (scenarioId === 'aqi') val = aqiVal
           else if (scenarioId === 'landslide') {
-            // Estimate based on past precipitation if hourly, otherwise use 24h trend
             let pastRain = rainVal
             if (hourlyIndex !== null && res.hourly) {
               const sliceStart = Math.max(0, hourlyIndex - 24)
@@ -291,7 +335,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
             val = maxWind * Math.exp(-dist / 2.8) + windVal * 0.4
             val = Math.min(75, Math.max(0, val))
 
-            // Coriolis spiral direction counter-clockwise
             const angleToCenter = (Math.atan2(dy, dx) * 180) / Math.PI
             direction = Math.round((angleToCenter + 90 + 20) % 360)
           } else if (scenarioId === 'sst') {
@@ -320,7 +363,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
       })
     }
 
-    // Add "Now" frame
     const nowPoints = getPointsForFrame(null, currentTime)
     frames.push({
       id: `now-${currentTime}`,
@@ -337,7 +379,6 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
       successfulPoints: nowPoints.length,
     })
 
-    // Add Forecast frames (1 ~ 6 hours ahead)
     for (let offset = 1; offset <= 6; offset++) {
       const forecastIndex = baseIndex + offset
       if (forecastIndex >= firstRes.hourly.time.length) break
@@ -371,38 +412,58 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
   }
 }
 
-
-
 async function getTimeline(scenarioId: string, forceRefresh = false, options: TimelineOptions = {}) {
-  const cacheKey = `${scenarioId}:${options.start || ''}:${options.end || ''}`
+  const cacheKey = `timeline:${scenarioId}:${options.start || ''}:${options.end || ''}`
+  const localCacheKey = `${scenarioId}:${options.start || ''}:${options.end || ''}`
   const now = Date.now()
-  const cached = cache.get(cacheKey)
 
-  if (!forceRefresh && cached?.payload && cached.expiresAt > now) {
-    return { ...cached.payload, cacheHit: true }
+  if (!forceRefresh) {
+    if (redisClient && redisClient.status === 'ready') {
+      try {
+        const cachedVal = await redisClient.get(cacheKey)
+        if (cachedVal) {
+          const parsed = JSON.parse(cachedVal)
+          return { ...parsed, cacheHit: true }
+        }
+      } catch (err) {
+        console.warn('[vhwis-redis] Failed to fetch timeline from Redis:', err)
+      }
+    }
+
+    const cached = cache.get(localCacheKey)
+    if (cached?.payload && cached.expiresAt > now) {
+      return { ...cached.payload, cacheHit: true }
+    }
+    if (cached?.promise && cached.expiresAt > now) {
+      return { ...(await cached.promise), cacheHit: true }
+    }
   }
 
-  if (!forceRefresh && cached?.promise && cached.expiresAt > now) {
-    return { ...(await cached.promise), cacheHit: true }
-  }
-
-  // Set cache expiry to 2 hours
   const expiresAt = now + 2 * 60 * 60 * 1000
   const promise = fetchOpenMeteo(scenarioId, options)
-  cache.set(cacheKey, { promise, expiresAt })
+  cache.set(localCacheKey, { promise, expiresAt })
 
   try {
     const payload = await promise
-    cache.set(cacheKey, { payload, expiresAt })
+    cache.set(localCacheKey, { payload, expiresAt })
+
+    if (redisClient && redisClient.status === 'ready') {
+      try {
+        await redisClient.set(cacheKey, JSON.stringify(payload), 'PX', 2 * 60 * 60 * 1000)
+      } catch (err) {
+        console.warn('[vhwis-redis] Failed to set timeline in Redis:', err)
+      }
+    }
+
     return payload
   } catch (error) {
-    // 429 / network error: 만료된 캐시라도 반환 (stale-while-error fallback)
+    const cached = cache.get(localCacheKey)
     if (cached?.payload) {
       console.warn(`[vhwis-cache] API error for ${scenarioId}, serving stale cache:`, error)
-      cache.set(cacheKey, { payload: cached.payload, expiresAt: now + 5 * 60 * 1000 })
+      cache.set(localCacheKey, { payload: cached.payload, expiresAt: now + 5 * 60 * 1000 })
       return { ...cached.payload, cacheHit: true }
     }
-    cache.delete(cacheKey)
+    cache.delete(localCacheKey)
     throw error
   }
 }
@@ -448,7 +509,6 @@ export function scheduleVhwisCacheWarmup(_serviceKey?: string) {
 
   const run = () => {
     warmKmaCache().finally(() => {
-      // Refresh cache every 30 minutes
       timer = setTimeout(run, 30 * 60 * 1000)
     })
   }

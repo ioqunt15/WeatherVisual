@@ -1222,6 +1222,32 @@ var scenarios = [
 ];
 
 // server/kmaCache.ts
+import Redis from "ioredis";
+var REDIS_URL = process.env.REDIS_URL;
+var redisClient = null;
+if (REDIS_URL) {
+  try {
+    redisClient = new Redis(REDIS_URL, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2e3
+    });
+    redisClient.on("error", (err) => {
+      console.warn("[vhwis-redis] Redis error, falling back to local memory cache:", err.message);
+    });
+    redisClient.on("connect", () => {
+      console.log("[vhwis-redis] Connected to Redis successfully.");
+    });
+  } catch (err) {
+    console.warn("[vhwis-redis] Failed to initialize Redis client:", err);
+  }
+}
+function closeRedisConnection() {
+  if (redisClient) {
+    console.log("[vhwis-redis] Closing Redis connection...");
+    redisClient.disconnect();
+    redisClient = null;
+  }
+}
 var cache = /* @__PURE__ */ new Map();
 var REQUEST_TIMEOUT_MS = 8e3;
 function isCoastalOrSeaStation(id) {
@@ -1271,12 +1297,25 @@ var rawCache = /* @__PURE__ */ new Map();
 var RAW_CACHE_TTL = 2 * 60 * 60 * 1e3;
 async function fetchRawOpenMeteo(type, lats, lons, forceRefresh = false) {
   const now = Date.now();
-  const cached = rawCache.get(type);
-  if (!forceRefresh && cached?.data && cached.expiresAt > now) {
-    return cached.data;
-  }
-  if (!forceRefresh && cached?.promise && cached.expiresAt > now) {
-    return cached.promise;
+  const cacheKey = `raw:${type}:${lats}:${lons}`;
+  if (!forceRefresh) {
+    if (redisClient && redisClient.status === "ready") {
+      try {
+        const cachedVal = await redisClient.get(cacheKey);
+        if (cachedVal) {
+          return JSON.parse(cachedVal);
+        }
+      } catch (err) {
+        console.warn("[vhwis-redis] Failed to fetch rawCache from Redis:", err);
+      }
+    }
+    const cached = rawCache.get(type);
+    if (cached?.data && cached.expiresAt > now) {
+      return cached.data;
+    }
+    if (cached?.promise && cached.expiresAt > now) {
+      return cached.promise;
+    }
   }
   const url = type === "aqi" ? `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lons}&current=us_aqi&hourly=us_aqi&past_days=2&timezone=Asia%2FHo_Chi_Minh` : `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,shortwave_radiation,cloud_cover,uv_index&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,shortwave_radiation,cloud_cover,uv_index&wind_speed_unit=ms&past_days=2&timezone=Asia%2FHo_Chi_Minh`;
   const controller = new AbortController();
@@ -1286,6 +1325,13 @@ async function fetchRawOpenMeteo(type, lats, lons, forceRefresh = false) {
     if (!res.ok) throw new Error(`Open-Meteo request failed: ${res.status}`);
     const data = await res.json();
     const arr = Array.isArray(data) ? data : [data];
+    if (redisClient && redisClient.status === "ready") {
+      try {
+        await redisClient.set(cacheKey, JSON.stringify(arr), "PX", RAW_CACHE_TTL);
+      } catch (err) {
+        console.warn("[vhwis-redis] Failed to set rawCache in Redis:", err);
+      }
+    }
     rawCache.set(type, { data: arr, expiresAt });
     return arr;
   }).catch((err) => {
@@ -1489,29 +1535,51 @@ async function fetchOpenMeteo(scenarioId, _options = {}) {
   };
 }
 async function getTimeline(scenarioId, forceRefresh = false, options = {}) {
-  const cacheKey = `${scenarioId}:${options.start || ""}:${options.end || ""}`;
+  const cacheKey = `timeline:${scenarioId}:${options.start || ""}:${options.end || ""}`;
+  const localCacheKey = `${scenarioId}:${options.start || ""}:${options.end || ""}`;
   const now = Date.now();
-  const cached = cache.get(cacheKey);
-  if (!forceRefresh && cached?.payload && cached.expiresAt > now) {
-    return { ...cached.payload, cacheHit: true };
-  }
-  if (!forceRefresh && cached?.promise && cached.expiresAt > now) {
-    return { ...await cached.promise, cacheHit: true };
+  if (!forceRefresh) {
+    if (redisClient && redisClient.status === "ready") {
+      try {
+        const cachedVal = await redisClient.get(cacheKey);
+        if (cachedVal) {
+          const parsed = JSON.parse(cachedVal);
+          return { ...parsed, cacheHit: true };
+        }
+      } catch (err) {
+        console.warn("[vhwis-redis] Failed to fetch timeline from Redis:", err);
+      }
+    }
+    const cached = cache.get(localCacheKey);
+    if (cached?.payload && cached.expiresAt > now) {
+      return { ...cached.payload, cacheHit: true };
+    }
+    if (cached?.promise && cached.expiresAt > now) {
+      return { ...await cached.promise, cacheHit: true };
+    }
   }
   const expiresAt = now + 2 * 60 * 60 * 1e3;
   const promise = fetchOpenMeteo(scenarioId, options);
-  cache.set(cacheKey, { promise, expiresAt });
+  cache.set(localCacheKey, { promise, expiresAt });
   try {
     const payload = await promise;
-    cache.set(cacheKey, { payload, expiresAt });
+    cache.set(localCacheKey, { payload, expiresAt });
+    if (redisClient && redisClient.status === "ready") {
+      try {
+        await redisClient.set(cacheKey, JSON.stringify(payload), "PX", 2 * 60 * 60 * 1e3);
+      } catch (err) {
+        console.warn("[vhwis-redis] Failed to set timeline in Redis:", err);
+      }
+    }
     return payload;
   } catch (error) {
+    const cached = cache.get(localCacheKey);
     if (cached?.payload) {
       console.warn(`[vhwis-cache] API error for ${scenarioId}, serving stale cache:`, error);
-      cache.set(cacheKey, { payload: cached.payload, expiresAt: now + 5 * 60 * 1e3 });
+      cache.set(localCacheKey, { payload: cached.payload, expiresAt: now + 5 * 60 * 1e3 });
       return { ...cached.payload, cacheHit: true };
     }
-    cache.delete(cacheKey);
+    cache.delete(localCacheKey);
     throw error;
   }
 }
@@ -1620,10 +1688,14 @@ var stopWarmup = scheduleVhwisCacheWarmup(KMA_KEY);
 server.listen(PORT, () => {
   console.log(`[VHWIS Production Server] Running at http://localhost:${PORT}`);
 });
-process.on("SIGTERM", () => {
-  console.log("Shutting down server...");
+function handleShutdown(signal) {
+  console.log(`Received ${signal}. Shutting down server...`);
   stopWarmup();
+  closeRedisConnection();
   server.close(() => {
+    console.log("Server closed. Exiting process.");
     process.exit(0);
   });
-});
+}
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+process.on("SIGINT", () => handleShutdown("SIGINT"));
