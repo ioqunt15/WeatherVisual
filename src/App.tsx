@@ -23,6 +23,7 @@ import {
   translateLiveText,
   createCameraThumbnail,
   generateMockTimeline,
+  generateTyphoonTimeline,
   wait,
   clamp,
   getPreferredRecordingFormat,
@@ -221,31 +222,47 @@ function App() {
     const controller = new AbortController()
     const requestId = (requestSeqRef.current += 1)
 
-    if (scenario.id === 'typhoon') {
+    if (scenario.id === 'typhoon' && selectedTyphoonId !== 'live') {
       setFrameIndex(0)
-      // Imported or locally run mock timeline logic inside helpers
-      setTimeline(generateMockTimeline(scenario, lang))
+      setTimeline(generateTyphoonTimeline(selectedTyphoonId, lang))
       setDataStatus({ key: 'status_ai_forecast' })
       return
     }
 
-    if (!scenario.vhwisCategory) {
-      setFrameIndex(0)
-      setTimeline(generateMockTimeline(scenario, lang))
-      setDataStatus({ key: 'status_ai_forecast' })
-      return
-    }
+    const targetScenario = (scenario.id === 'typhoon' && selectedTyphoonId === 'live')
+      ? (scenarios.find(s => s.id === 'gust') || scenario)
+      : scenario
 
-    loadWeatherTimeline(scenario, controller.signal, {
+
+    loadWeatherTimeline(targetScenario, controller.signal, {
       forceRefresh: refreshNonce > 0,
     })
       .then((payload) => {
-        if (cancelled || requestId !== requestSeqRef.current || payload.scenarioId !== scenario.id) {
+        const isScenarioMatch = payload.scenarioId === targetScenario.id
+        if (cancelled || requestId !== requestSeqRef.current || !isScenarioMatch) {
           return
         }
 
-        setFrameIndex(0)
-        setTimeline(payload.frames.length > 1 ? payload.frames : generateMockTimeline(scenario, lang))
+        const mappedFrames = payload.frames.map(frame => {
+          let source = frame.source
+          if (scenario.id === 'typhoon') {
+            const isForecast = frame.label.includes('예보') || frame.label.includes('Dự báo') || frame.label.includes('Fcst')
+            if (isForecast) {
+              source = lang === 'ko' ? 'VHWIS 태풍예측' : lang === 'vi' ? 'Dự báo Bão VHWIS' : 'VHWIS Typhoon Forecast'
+            } else {
+              source = lang === 'ko' ? 'VHWIS 태풍센터' : lang === 'vi' ? 'Trung tâm Bão VHWIS' : 'VHWIS Typhoon Center'
+            }
+          }
+          return {
+            ...frame,
+            source
+          }
+        })
+
+        const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(targetScenario.id)
+        const nextTimeline = mappedFrames.length > 1 ? mappedFrames : generateMockTimeline(targetScenario, lang)
+        setTimeline(nextTimeline)
+        setFrameIndex(isObs ? nextTimeline.length - 1 : 0)
         setColumnReveal(1)
         setDataStatus({
           key: payload.cacheHit ? 'status_cache_hit' : 'status_cache_update',
@@ -257,7 +274,10 @@ function App() {
           return
         }
 
-        setTimeline(generateMockTimeline(scenario, lang))
+        const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(targetScenario.id)
+        const mockTimeline = generateMockTimeline(targetScenario, lang)
+        setTimeline(mockTimeline)
+        setFrameIndex(isObs ? mockTimeline.length - 1 : 0)
         setColumnReveal(1)
         setDataStatus({ key: 'status_api_fail' })
       })
@@ -807,7 +827,8 @@ function App() {
               className="status-refresh"
               onClick={() => {
                 setIsTimelinePlaying(false)
-                setFrameIndex(0)
+                const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(scenario.id)
+                setFrameIndex(isObs ? timeline.length - 1 : 0)
                 setColumnReveal(1)
                 setDataStatus({ key: 'status_checking' })
                 setRefreshNonce(refreshNonce + 1)

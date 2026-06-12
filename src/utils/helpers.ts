@@ -6,6 +6,7 @@ import type { VhwisFrame } from '../services/kma'
 import type { Language, CameraShot, ScriptText, OverlayVisibility, OverlayKey, RegionalFeature, MultiPolygonCoordinates, PolygonCoordinates, RecordingFormat } from '../types'
 import type { VietnamGeoJson, GridCell } from './vietnamGrid'
 import { rgbaToCss, valueToSteppedColor } from './color'
+import React from 'react'
 import {
   Thermometer,
   Droplet,
@@ -18,9 +19,28 @@ import {
   Flame,
   SunDim,
   Activity,
-  AlertTriangle,
-  RotateCw
+  AlertTriangle
 } from 'lucide-react'
+
+export const TyphoonIcon = (props: React.SVGProps<SVGSVGElement>) => {
+  return React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      width: '24',
+      height: '24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: '2',
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      ...props,
+    },
+    React.createElement('circle', { cx: '12', cy: '12', r: '3', fill: 'currentColor' }),
+    React.createElement('path', { d: 'M12 9c-3 0-6 2.5-6 6 0 1.5.5 3 1.5 4' }),
+    React.createElement('path', { d: 'M12 15c3 0 6-2.5 6-6 0-1.5-.5-3-1.5-4' })
+  )
+}
 
 
 export const DEFAULT_MAX_ELEVATION = 80_000
@@ -256,62 +276,25 @@ export function generateMockTimeline(scenario: DisasterScenario, lang: Language 
   
   const frames: VhwisFrame[] = []
   
-  const hourNow = timeNow.getHours()
-  const monthNow = String(timeNow.getMonth() + 1).padStart(2, '0')
-  const dayNow = String(timeNow.getDate()).padStart(2, '0')
+  const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(scenario.id)
+  const startOffset = isObs ? -6 : 0
+  const endOffset = isObs ? 0 : 6
   
-  const hourEpochNow = Math.floor(timeNow.getTime() / 3600000)
-  const pointsNow = scenario.points.map((point) => {
-    const range = (scenario.maxValue - scenario.minValue) * 0.15
-    const stationHash = point.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    const scenarioHash = scenario.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    const seed = hourEpochNow + stationHash + scenarioHash
-    const prngVal = seededRandom(seed) - 0.5
+  for (let offset = startOffset; offset <= endOffset; offset++) {
+    const timeFrame = new Date(timeNow.getTime() + offset * 60 * 60 * 1000)
+    const hourFrame = timeFrame.getHours()
+    const monthFrame = String(timeFrame.getMonth() + 1).padStart(2, '0')
+    const dayFrame = String(timeFrame.getDate()).padStart(2, '0')
+    const hourEpochFrame = Math.floor(timeFrame.getTime() / 3600000)
     
-    const t = (hourNow - 5) / 24
-    const cycle = Math.sin(t * 2 * Math.PI - Math.PI / 2)
-    let val = point.value + cycle * range
-    val += prngVal * (range * 0.1)
-    val = Math.max(scenario.minValue, Math.min(scenario.maxValue, val))
-    val = Math.round(val * 10) / 10
-    
-    let direction = undefined
-    if (scenario.id === 'wind' || scenario.id === 'forecast_wind' || scenario.id === 'gust' || scenario.id === 'typhoon') {
-      if (point.lat > 19) direction = Math.round((230 + prngVal * 20 + 360) % 360)
-      else if (point.lat > 14) direction = Math.round((250 + prngVal * 20 + 360) % 360)
-      else direction = Math.round((270 + prngVal * 20 + 360) % 360)
-    }
-    
-    return {
-      ...point,
-      value: val,
-      direction
-    }
-  })
-  
-  frames.push({
-    id: `mock-now-${hourEpochNow}`,
-    label: lang === 'ko' ? `실황 ${String(hourNow).padStart(2, '0')}:00` : lang === 'vi' ? `Thực tế ${String(hourNow).padStart(2, '0')}:00` : `Live ${String(hourNow).padStart(2, '0')}:00`,
-    updatedAt: `${timeNow.getFullYear()}.${monthNow}.${dayNow} ${String(hourNow).padStart(2, '0')}:00`,
-    source: lang === 'ko' ? '기상 AI 시뮬레이션' : lang === 'vi' ? 'Mô phỏng khí tượng AI' : 'AI Meteorological Simulation',
-    points: pointsNow
-  })
-  
-  for (let offset = 1; offset <= 6; offset++) {
-    const timeForecast = new Date(timeNow.getTime() + offset * 60 * 60 * 1000)
-    const hourFcst = timeForecast.getHours()
-    const monthFcst = String(timeForecast.getMonth() + 1).padStart(2, '0')
-    const dayFcst = String(timeForecast.getDate()).padStart(2, '0')
-    const hourEpochFcst = Math.floor(timeForecast.getTime() / 3600000)
-    
-    const pointsFcst = scenario.points.map((point) => {
+    const pointsFrame = scenario.points.map((point) => {
       const range = (scenario.maxValue - scenario.minValue) * 0.15
       const stationHash = point.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
       const scenarioHash = scenario.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-      const seed = hourEpochFcst + stationHash + scenarioHash
+      const seed = hourEpochFrame + stationHash + scenarioHash
       const prngVal = seededRandom(seed) - 0.5
       
-      const t = (hourFcst - 5) / 24
+      const t = (hourFrame - 5) / 24
       const cycle = Math.sin(t * 2 * Math.PI - Math.PI / 2)
       let val = point.value + cycle * range
       val += prngVal * (range * 0.15)
@@ -332,12 +315,23 @@ export function generateMockTimeline(scenario: DisasterScenario, lang: Language 
       }
     })
     
+    let label = ''
+    if (isObs) {
+      label = lang === 'ko' ? `실황 ${String(hourFrame).padStart(2, '0')}:00` : lang === 'vi' ? `Thực tế ${String(hourFrame).padStart(2, '0')}:00` : `Live ${String(hourFrame).padStart(2, '0')}:00`
+    } else {
+      if (offset === 0) {
+        label = lang === 'ko' ? `실황 ${String(hourFrame).padStart(2, '0')}:00` : lang === 'vi' ? `Thực tế ${String(hourFrame).padStart(2, '0')}:00` : `Live ${String(hourFrame).padStart(2, '0')}:00`
+      } else {
+        label = lang === 'ko' ? `예보 +${offset}h` : lang === 'vi' ? `Dự báo +${offset}h` : `Fcst +${offset}h`
+      }
+    }
+    
     frames.push({
-      id: `mock-fcst-${hourEpochFcst}`,
-      label: lang === 'ko' ? `예보 +${offset}h` : lang === 'vi' ? `Dự báo +${offset}h` : `Fcst +${offset}h`,
-      updatedAt: `${timeForecast.getFullYear()}.${monthFcst}.${dayFcst} ${String(hourFcst).padStart(2, '0')}:00`,
+      id: `mock-${isObs ? 'obs' : 'fcst'}-${hourEpochFrame}`,
+      label,
+      updatedAt: `${timeFrame.getFullYear()}.${monthFrame}.${dayFrame} ${String(hourFrame).padStart(2, '0')}:00`,
       source: lang === 'ko' ? '기상 AI 시뮬레이션' : lang === 'vi' ? 'Mô phỏng khí tượng AI' : 'AI Meteorological Simulation',
-      points: pointsFcst
+      points: pointsFrame
     })
   }
   
@@ -369,6 +363,20 @@ export function translateLiveText(text: string | undefined, lang: Language): str
       processed = processed.replace(/누적/g, 'Lũy kế')
     } else if (lang === 'en') {
       processed = processed.replace(/누적/g, 'Accum')
+    }
+  }
+  if (processed.includes('VHWIS 태풍센터')) {
+    if (lang === 'vi') {
+      processed = processed.replace(/VHWIS 태풍센터/g, 'Trung tâm Bão VHWIS')
+    } else if (lang === 'en') {
+      processed = processed.replace(/VHWIS 태풍센터/g, 'VHWIS Typhoon Center')
+    }
+  }
+  if (processed.includes('VHWIS 태풍예측')) {
+    if (lang === 'vi') {
+      processed = processed.replace(/VHWIS 태풍예측/g, 'Dự báo Bão VHWIS')
+    } else if (lang === 'en') {
+      processed = processed.replace(/VHWIS 태풍예측/g, 'VHWIS Typhoon Forecast')
     }
   }
   return processed
@@ -634,7 +642,7 @@ export const scenarioIcon = {
   landslide: AlertTriangle,
   flood: AlertTriangle,
   drought: Flame,
-  typhoon: RotateCw,
+  typhoon: TyphoonIcon,
 }
 
 export function removeVietnameseTones(str: string) {

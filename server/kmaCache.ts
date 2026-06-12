@@ -23,6 +23,7 @@ type WeatherTimeline = {
 
 type CacheEntry = {
   expiresAt: number
+  fetchedAt?: number
   promise?: Promise<WeatherTimeline>
   payload?: WeatherTimeline
 }
@@ -62,6 +63,19 @@ export function closeRedisConnection() {
 }
 
 const cache = new Map<string, CacheEntry>()
+const lastApiFetchTimes = new Map<string, number>()
+
+function getCurrentIctHourString(): string {
+  const now = new Date()
+  const utcTime = now.getTime() + now.getTimezoneOffset() * 60 * 1000
+  const ictTime = new Date(utcTime + 7 * 60 * 60 * 1000)
+  const yyyy = ictTime.getFullYear()
+  const mm = String(ictTime.getMonth() + 1).padStart(2, '0')
+  const dd = String(ictTime.getDate()).padStart(2, '0')
+  const hh = String(ictTime.getHours()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}T${hh}:00`
+}
+
 const REQUEST_TIMEOUT_MS = 8000
 
 // Helper to check if station is coastal or sea archipelago
@@ -120,6 +134,7 @@ function getTyphoonCenter(epoch: number): { lat: number; lon: number } {
 // ─── 공유 raw 데이터 캐시 (Open-Meteo API 호출 최소화) ─────────────────────────
 type RawDataCache = {
   expiresAt: number
+  fetchedAt?: number
   promise?: Promise<any[]>
   data?: any[]
 }
@@ -136,7 +151,17 @@ async function fetchRawOpenMeteo(type: 'forecast' | 'aqi', lats: string, lons: s
       try {
         const cachedVal = await redisClient.get(cacheKey)
         if (cachedVal) {
-          return JSON.parse(cachedVal)
+          const arr = JSON.parse(cachedVal)
+          const currentHour = getCurrentIctHourString()
+          const firstRes = arr[0]
+          const cachedHour = firstRes?.current?.time
+          const isUpToDate = cachedHour && cachedHour >= currentHour
+          const lastFetch = lastApiFetchTimes.get(cacheKey) || 0
+          const isRecent = (now - lastFetch < 5 * 60 * 1000)
+
+          if (isUpToDate || isRecent) {
+            return arr
+          }
         }
       } catch (err) {
         console.warn('[vhwis-redis] Failed to fetch rawCache from Redis:', err)
@@ -144,11 +169,20 @@ async function fetchRawOpenMeteo(type: 'forecast' | 'aqi', lats: string, lons: s
     }
 
     const cached = rawCache.get(type)
-    if (cached?.data && cached.expiresAt > now) {
-      return cached.data
-    }
-    if (cached?.promise && cached.expiresAt > now) {
-      return cached.promise
+    if (cached && cached.expiresAt > now) {
+      if (cached.data) {
+        const currentHour = getCurrentIctHourString()
+        const firstRes = cached.data[0]
+        const cachedHour = firstRes?.current?.time
+        const isUpToDate = cachedHour && cachedHour >= currentHour
+        const isRecent = cached.fetchedAt && (now - cached.fetchedAt < 5 * 60 * 1000)
+
+        if (isUpToDate || isRecent) {
+          return cached.data
+        }
+      } else if (cached.promise) {
+        return cached.promise
+      }
     }
   }
 
@@ -174,14 +208,15 @@ async function fetchRawOpenMeteo(type: 'forecast' | 'aqi', lats: string, lons: s
         }
       }
 
-      rawCache.set(type, { data: arr, expiresAt })
+      rawCache.set(type, { data: arr, expiresAt, fetchedAt: now })
+      lastApiFetchTimes.set(cacheKey, now)
       return arr
     })
     .catch((err) => {
       const stale = rawCache.get(type)
       if (stale?.data) {
         console.warn(`[vhwis-cache] Open-Meteo ${type} error, serving stale raw cache:`, err)
-        rawCache.set(type, { data: stale.data, expiresAt: now + 5 * 60 * 1000 })
+        rawCache.set(type, { data: stale.data, expiresAt: now + 5 * 60 * 1000, fetchedAt: now })
         return stale.data
       }
       rawCache.delete(type)
@@ -189,11 +224,11 @@ async function fetchRawOpenMeteo(type: 'forecast' | 'aqi', lats: string, lons: s
     })
     .finally(() => clearTimeout(timeout))
 
-  rawCache.set(type, { promise, expiresAt })
+  rawCache.set(type, { promise, expiresAt, fetchedAt: now })
   return promise
 }
 
-async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}): Promise<WeatherTimeline> {
+async function fetchOpenMeteo(scenarioId: string, forceRefresh = false, _options: TimelineOptions = {}): Promise<WeatherTimeline> {
   const scenario = scenarios.find((s) => s.id === scenarioId)
   if (!scenario) {
     throw new Error('Unsupported weather scenario')
@@ -204,7 +239,7 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
   const lons = targets.map((t) => t.lon).join(',')
 
   const isAqi = scenarioId === 'aqi'
-  const responses = await fetchRawOpenMeteo(isAqi ? 'aqi' : 'forecast', lats, lons, false)
+  const responses = await fetchRawOpenMeteo(isAqi ? 'aqi' : 'forecast', lats, lons, forceRefresh)
 
   if (responses.length === 0 || !responses[0].current) {
     throw new Error('No weather data returned from Open-Meteo')
@@ -212,7 +247,8 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
 
   const firstRes = responses[0]
   const currentTime = firstRes.current.time
-  const currentHourlyIndex = firstRes.hourly.time.indexOf(currentTime)
+  const currentTimeHour = currentTime.slice(0, 13) + ':00'
+  const currentHourlyIndex = firstRes.hourly.time.indexOf(currentTimeHour)
   const baseIndex = currentHourlyIndex >= 0 ? currentHourlyIndex : 48
 
   const frames: KmaFrame[] = []
@@ -220,48 +256,28 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
   if (scenarioId === 'rain') {
     const ACCUM_HOURS = 12
 
-    const nowAccumPoints = targets.map((point, idx) => {
-      const res = responses[idx]
-      let rainSum = 0
-      if (res && res.hourly) {
-        const fromIdx = Math.max(0, baseIndex - ACCUM_HOURS)
-        for (let i = fromIdx; i <= baseIndex; i++) {
-          rainSum += res.hourly.precipitation[i] || 0
-        }
-      }
-      return { ...point, value: Math.round(rainSum * 10) / 10 }
-    })
-    frames.push({
-      id: `rain-now-${currentTime}`,
-      label: `실황 ${ACCUM_HOURS}h 누적`,
-      updatedAt: formatTimeLabel(currentTime),
-      source: 'Open-Meteo 12시간 누적강수',
-      points: nowAccumPoints,
-      successfulPoints: nowAccumPoints.length,
-    })
-
-    for (let offset = 1; offset <= 6; offset++) {
-      const forecastIndex = baseIndex + offset
-      if (forecastIndex >= firstRes.hourly.time.length) break
-      const forecastTime = firstRes.hourly.time[forecastIndex]
-      const fcstAccumPoints = targets.map((point, idx) => {
+    for (let offset = -6; offset <= 0; offset++) {
+      const targetIndex = baseIndex + offset
+      if (targetIndex < 0 || targetIndex >= firstRes.hourly.time.length) continue
+      const timeString = firstRes.hourly.time[targetIndex]
+      const accumPoints = targets.map((point, idx) => {
         const res = responses[idx]
         let rainSum = 0
         if (res && res.hourly) {
-          const fromIdx = Math.max(0, forecastIndex - ACCUM_HOURS)
-          for (let i = fromIdx; i <= forecastIndex; i++) {
+          const fromIdx = Math.max(0, targetIndex - ACCUM_HOURS)
+          for (let i = fromIdx; i <= targetIndex; i++) {
             rainSum += res.hourly.precipitation[i] || 0
           }
         }
         return { ...point, value: Math.round(rainSum * 10) / 10 }
       })
       frames.push({
-        id: `rain-fcst-${forecastTime}`,
-        label: `예보 ${forecastTime.slice(11)} (12h 누적)`,
-        updatedAt: formatTimeLabel(forecastTime),
+        id: `rain-now-${timeString}`,
+        label: `실황 ${timeString.slice(11)} (12h 누적)`,
+        updatedAt: formatTimeLabel(timeString),
         source: 'Open-Meteo 12시간 누적강수',
-        points: fcstAccumPoints,
-        successfulPoints: fcstAccumPoints.length,
+        points: accumPoints,
+        successfulPoints: accumPoints.length,
       })
     }
   } else {
@@ -363,43 +379,54 @@ async function fetchOpenMeteo(scenarioId: string, _options: TimelineOptions = {}
       })
     }
 
-    const nowPoints = getPointsForFrame(null, currentTime)
-    frames.push({
-      id: `now-${currentTime}`,
-      label: `실황 ${currentTime.slice(11)}`,
-      updatedAt: formatTimeLabel(currentTime),
-      source: isAqi
-        ? 'Open-Meteo 대기질 실황'
-        : scenarioId === 'typhoon'
-          ? 'VHWIS 태풍센터'
-          : isCoastalOrSeaStation(scenarioId)
-            ? 'VHWIS 해양실황'
-            : 'Open-Meteo 실황',
-      points: nowPoints,
-      successfulPoints: nowPoints.length,
-    })
+    const isObservationScenario = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'solar', 'sst', 'wave'].includes(scenarioId)
 
-    for (let offset = 1; offset <= 6; offset++) {
-      const forecastIndex = baseIndex + offset
-      if (forecastIndex >= firstRes.hourly.time.length) break
+    if (isObservationScenario) {
+      for (let offset = -6; offset <= 0; offset++) {
+        const targetIndex = baseIndex + offset
+        if (targetIndex < 0 || targetIndex >= firstRes.hourly.time.length) continue
 
-      const forecastTime = firstRes.hourly.time[forecastIndex]
-      const forecastPoints = getPointsForFrame(forecastIndex, forecastTime)
+        const timeString = firstRes.hourly.time[targetIndex]
+        const points = getPointsForFrame(targetIndex, timeString)
 
-      frames.push({
-        id: `fcst-${forecastTime}`,
-        label: `예보 ${forecastTime.slice(11)}`,
-        updatedAt: formatTimeLabel(forecastTime),
-        source: isAqi
-          ? 'Open-Meteo 대기질 예보'
-          : scenarioId === 'typhoon'
-            ? 'VHWIS 태풍예측'
-            : isCoastalOrSeaStation(scenarioId)
-              ? 'VHWIS 해양예보'
-              : 'Open-Meteo 예보',
-        points: forecastPoints,
-        successfulPoints: forecastPoints.length,
-      })
+        frames.push({
+          id: `now-${timeString}`,
+          label: `실황 ${timeString.slice(11)}`,
+          updatedAt: formatTimeLabel(timeString),
+          source: isAqi
+            ? 'Open-Meteo 대기질 실황'
+            : scenarioId === 'typhoon'
+              ? 'VHWIS 태풍센터'
+              : isCoastalOrSeaStation(scenarioId)
+                ? 'VHWIS 해양실황'
+                : 'Open-Meteo 실황',
+          points,
+          successfulPoints: points.length,
+        })
+      }
+    } else {
+      for (let offset = 0; offset <= 6; offset++) {
+        const targetIndex = baseIndex + offset
+        if (targetIndex < 0 || targetIndex >= firstRes.hourly.time.length) continue
+
+        const timeString = firstRes.hourly.time[targetIndex]
+        const points = getPointsForFrame(targetIndex, timeString)
+
+        frames.push({
+          id: `fcst-${timeString}`,
+          label: offset === 0 ? `실황 ${timeString.slice(11)}` : `예보 +${offset}h`,
+          updatedAt: formatTimeLabel(timeString),
+          source: isAqi
+            ? 'Open-Meteo 대기질 예보'
+            : scenarioId === 'typhoon'
+              ? 'VHWIS 태풍예측'
+              : isCoastalOrSeaStation(scenarioId)
+                ? 'VHWIS 해양예보'
+                : 'Open-Meteo 예보',
+          points,
+          successfulPoints: points.length,
+        })
+      }
     }
   }
 
@@ -416,6 +443,7 @@ async function getTimeline(scenarioId: string, forceRefresh = false, options: Ti
   const cacheKey = `timeline:${scenarioId}:${options.start || ''}:${options.end || ''}`
   const localCacheKey = `${scenarioId}:${options.start || ''}:${options.end || ''}`
   const now = Date.now()
+  const currentHourLabel = getCurrentIctHourString().replace('T', ' ')
 
   if (!forceRefresh) {
     if (redisClient && redisClient.status === 'ready') {
@@ -423,7 +451,15 @@ async function getTimeline(scenarioId: string, forceRefresh = false, options: Ti
         const cachedVal = await redisClient.get(cacheKey)
         if (cachedVal) {
           const parsed = JSON.parse(cachedVal)
-          return { ...parsed, cacheHit: true }
+          const isObservationScenario = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(scenarioId)
+          const targetFrame = isObservationScenario ? parsed.frames[parsed.frames.length - 1] : parsed.frames[0]
+          const isUpToDate = targetFrame && targetFrame.updatedAt >= currentHourLabel
+          const lastFetch = lastApiFetchTimes.get(cacheKey) || 0
+          const isRecent = (now - lastFetch < 5 * 60 * 1000)
+
+          if (isUpToDate || isRecent) {
+            return { ...parsed, cacheHit: true }
+          }
         }
       } catch (err) {
         console.warn('[vhwis-redis] Failed to fetch timeline from Redis:', err)
@@ -431,21 +467,32 @@ async function getTimeline(scenarioId: string, forceRefresh = false, options: Ti
     }
 
     const cached = cache.get(localCacheKey)
-    if (cached?.payload && cached.expiresAt > now) {
-      return { ...cached.payload, cacheHit: true }
-    }
-    if (cached?.promise && cached.expiresAt > now) {
-      return { ...(await cached.promise), cacheHit: true }
+    if (cached && cached.expiresAt > now) {
+      if (cached.payload) {
+        const isObservationScenario = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(scenarioId)
+        const targetFrame = isObservationScenario ? cached.payload.frames[cached.payload.frames.length - 1] : cached.payload.frames[0]
+        const isUpToDate = targetFrame && targetFrame.updatedAt >= currentHourLabel
+        const lastFetch = lastApiFetchTimes.get(localCacheKey) || 0
+        const isRecent = (now - lastFetch < 5 * 60 * 1000)
+
+        if (isUpToDate || isRecent) {
+          return { ...cached.payload, cacheHit: true }
+        }
+      } else if (cached.promise) {
+        return { ...(await cached.promise), cacheHit: true }
+      }
     }
   }
 
   const expiresAt = now + 2 * 60 * 60 * 1000
-  const promise = fetchOpenMeteo(scenarioId, options)
+  const promise = fetchOpenMeteo(scenarioId, forceRefresh, options)
   cache.set(localCacheKey, { promise, expiresAt })
 
   try {
     const payload = await promise
-    cache.set(localCacheKey, { payload, expiresAt })
+    cache.set(localCacheKey, { payload, expiresAt, fetchedAt: now })
+    lastApiFetchTimes.set(localCacheKey, now)
+    lastApiFetchTimes.set(cacheKey, now)
 
     if (redisClient && redisClient.status === 'ready') {
       try {
@@ -460,7 +507,7 @@ async function getTimeline(scenarioId: string, forceRefresh = false, options: Ti
     const cached = cache.get(localCacheKey)
     if (cached?.payload) {
       console.warn(`[vhwis-cache] API error for ${scenarioId}, serving stale cache:`, error)
-      cache.set(localCacheKey, { payload: cached.payload, expiresAt: now + 5 * 60 * 1000 })
+      cache.set(localCacheKey, { payload: cached.payload, expiresAt: now + 5 * 60 * 1000, fetchedAt: now })
       return { ...cached.payload, cacheHit: true }
     }
     cache.delete(localCacheKey)

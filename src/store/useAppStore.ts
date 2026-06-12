@@ -101,7 +101,7 @@ export const useAppStore = create<AppState>((set) => ({
   regionLayer: 'stations',
   vietnamGeoJson: null,
   timeline: generateMockTimeline(scenarios.find((s) => s.id === 'temperature') || scenarios[0], 'vi'),
-  frameIndex: 0,
+  frameIndex: 6,
   dataStatus: { key: 'status_loading' },
   mapLayersInitialized: false,
   isTimebarExpanded: true,

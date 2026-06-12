@@ -34,12 +34,20 @@ export const Timeline: React.FC = () => {
       return
     }
 
+    const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(scenarioId)
+
     const timer = window.setInterval(() => {
-      setFrameIndex((value) => (value + 1) % timeline.length)
+      setFrameIndex((value) => {
+        if (isObs) {
+          return (value - 1 + timeline.length) % timeline.length
+        } else {
+          return (value + 1) % timeline.length
+        }
+      })
     }, 1500)
 
     return () => window.clearInterval(timer)
-  }, [isTimelinePlaying, timeline.length, setFrameIndex])
+  }, [isTimelinePlaying, timeline.length, setFrameIndex, scenarioId])
 
   // Cleanup meta popup timeout
   useEffect(() => {
@@ -129,7 +137,8 @@ export const Timeline: React.FC = () => {
           className="timebar-mobile-refresh"
           onClick={() => {
             setIsTimelinePlaying(false)
-            setFrameIndex(0)
+            const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(scenarioId)
+            setFrameIndex(isObs ? timeline.length - 1 : 0)
             setColumnReveal(1)
             setDataStatus({ key: 'status_checking' })
             setRefreshNonce(refreshNonce + 1)

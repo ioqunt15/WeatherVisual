@@ -1462,47 +1462,28 @@ async function fetchOpenMeteo(scenarioId, _options = {}) {
   const frames = [];
   if (scenarioId === "rain") {
     const ACCUM_HOURS = 12;
-    const nowAccumPoints = targets.map((point, idx) => {
-      const res = responses[idx];
-      let rainSum = 0;
-      if (res && res.hourly) {
-        const fromIdx = Math.max(0, baseIndex - ACCUM_HOURS);
-        for (let i = fromIdx; i <= baseIndex; i++) {
-          rainSum += res.hourly.precipitation[i] || 0;
-        }
-      }
-      return { ...point, value: Math.round(rainSum * 10) / 10 };
-    });
-    frames.push({
-      id: `rain-now-${currentTime}`,
-      label: `\uC2E4\uD669 ${ACCUM_HOURS}h \uB204\uC801`,
-      updatedAt: formatTimeLabel(currentTime),
-      source: "Open-Meteo 12\uC2DC\uAC04 \uB204\uC801\uAC15\uC218",
-      points: nowAccumPoints,
-      successfulPoints: nowAccumPoints.length
-    });
-    for (let offset = 1; offset <= 6; offset++) {
-      const forecastIndex = baseIndex + offset;
-      if (forecastIndex >= firstRes.hourly.time.length) break;
-      const forecastTime = firstRes.hourly.time[forecastIndex];
-      const fcstAccumPoints = targets.map((point, idx) => {
+    for (let offset = -6; offset <= 0; offset++) {
+      const targetIndex = baseIndex + offset;
+      if (targetIndex < 0 || targetIndex >= firstRes.hourly.time.length) continue;
+      const timeString = firstRes.hourly.time[targetIndex];
+      const accumPoints = targets.map((point, idx) => {
         const res = responses[idx];
         let rainSum = 0;
         if (res && res.hourly) {
-          const fromIdx = Math.max(0, forecastIndex - ACCUM_HOURS);
-          for (let i = fromIdx; i <= forecastIndex; i++) {
+          const fromIdx = Math.max(0, targetIndex - ACCUM_HOURS);
+          for (let i = fromIdx; i <= targetIndex; i++) {
             rainSum += res.hourly.precipitation[i] || 0;
           }
         }
         return { ...point, value: Math.round(rainSum * 10) / 10 };
       });
       frames.push({
-        id: `rain-fcst-${forecastTime}`,
-        label: `\uC608\uBCF4 ${forecastTime.slice(11)} (12h \uB204\uC801)`,
-        updatedAt: formatTimeLabel(forecastTime),
+        id: `rain-now-${timeString}`,
+        label: `\uC2E4\uD669 ${timeString.slice(11)} (12h \uB204\uC801)`,
+        updatedAt: formatTimeLabel(timeString),
         source: "Open-Meteo 12\uC2DC\uAC04 \uB204\uC801\uAC15\uC218",
-        points: fcstAccumPoints,
-        successfulPoints: fcstAccumPoints.length
+        points: accumPoints,
+        successfulPoints: accumPoints.length
       });
     }
   } else {
@@ -1597,28 +1578,37 @@ async function fetchOpenMeteo(scenarioId, _options = {}) {
         };
       });
     };
-    const nowPoints = getPointsForFrame(null, currentTime);
-    frames.push({
-      id: `now-${currentTime}`,
-      label: `\uC2E4\uD669 ${currentTime.slice(11)}`,
-      updatedAt: formatTimeLabel(currentTime),
-      source: isAqi ? "Open-Meteo \uB300\uAE30\uC9C8 \uC2E4\uD669" : scenarioId === "typhoon" ? "VHWIS \uD0DC\uD48D\uC13C\uD130" : isCoastalOrSeaStation(scenarioId) ? "VHWIS \uD574\uC591\uC2E4\uD669" : "Open-Meteo \uC2E4\uD669",
-      points: nowPoints,
-      successfulPoints: nowPoints.length
-    });
-    for (let offset = 1; offset <= 6; offset++) {
-      const forecastIndex = baseIndex + offset;
-      if (forecastIndex >= firstRes.hourly.time.length) break;
-      const forecastTime = firstRes.hourly.time[forecastIndex];
-      const forecastPoints = getPointsForFrame(forecastIndex, forecastTime);
-      frames.push({
-        id: `fcst-${forecastTime}`,
-        label: `\uC608\uBCF4 ${forecastTime.slice(11)}`,
-        updatedAt: formatTimeLabel(forecastTime),
-        source: isAqi ? "Open-Meteo \uB300\uAE30\uC9C8 \uC608\uBCF4" : scenarioId === "typhoon" ? "VHWIS \uD0DC\uD48D\uC608\uCE21" : isCoastalOrSeaStation(scenarioId) ? "VHWIS \uD574\uC591\uC608\uBCF4" : "Open-Meteo \uC608\uBCF4",
-        points: forecastPoints,
-        successfulPoints: forecastPoints.length
-      });
+    const isObservationScenario = ["temperature", "humidity", "wind", "gust", "pressure", "solar", "sst", "wave"].includes(scenarioId);
+    if (isObservationScenario) {
+      for (let offset = -6; offset <= 0; offset++) {
+        const targetIndex = baseIndex + offset;
+        if (targetIndex < 0 || targetIndex >= firstRes.hourly.time.length) continue;
+        const timeString = firstRes.hourly.time[targetIndex];
+        const points = getPointsForFrame(targetIndex, timeString);
+        frames.push({
+          id: `now-${timeString}`,
+          label: `\uC2E4\uD669 ${timeString.slice(11)}`,
+          updatedAt: formatTimeLabel(timeString),
+          source: isAqi ? "Open-Meteo \uB300\uAE30\uC9C8 \uC2E4\uD669" : scenarioId === "typhoon" ? "VHWIS \uD0DC\uD48D\uC13C\uD130" : isCoastalOrSeaStation(scenarioId) ? "VHWIS \uD574\uC591\uC2E4\uD669" : "Open-Meteo \uC2E4\uD669",
+          points,
+          successfulPoints: points.length
+        });
+      }
+    } else {
+      for (let offset = 0; offset <= 6; offset++) {
+        const targetIndex = baseIndex + offset;
+        if (targetIndex < 0 || targetIndex >= firstRes.hourly.time.length) continue;
+        const timeString = firstRes.hourly.time[targetIndex];
+        const points = getPointsForFrame(targetIndex, timeString);
+        frames.push({
+          id: `fcst-${timeString}`,
+          label: offset === 0 ? `\uC2E4\uD669 ${timeString.slice(11)}` : `\uC608\uBCF4 +${offset}h`,
+          updatedAt: formatTimeLabel(timeString),
+          source: isAqi ? "Open-Meteo \uB300\uAE30\uC9C8 \uC608\uBCF4" : scenarioId === "typhoon" ? "VHWIS \uD0DC\uD48D\uC608\uCE21" : isCoastalOrSeaStation(scenarioId) ? "VHWIS \uD574\uC591\uC608\uBCF4" : "Open-Meteo \uC608\uBCF4",
+          points,
+          successfulPoints: points.length
+        });
+      }
     }
   }
   return {

@@ -46,13 +46,15 @@ export const Sidebar: React.FC = () => {
     }
     const nextScenario = scenarios.find((item) => item.id === nextScenarioId) ?? scenarios[0]
 
+    const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(nextScenario.id)
+    const mockTimeline = generateMockTimeline(nextScenario, lang)
     setScenarioId(nextScenario.id)
-    setFrameIndex(0)
+    setFrameIndex(isObs ? mockTimeline.length - 1 : 0)
     startColumnReveal()
     setIsTimelinePlaying(false)
     setMobileMenuOpen(false)
     setDataStatus({ key: nextScenario.vhwisCategory ? 'status_checking' : 'status_sample' })
-    setTimeline(generateMockTimeline(nextScenario, lang))
+    setTimeline(mockTimeline)
   }
 
   if (!showControls || shortcutChromeHidden) return null

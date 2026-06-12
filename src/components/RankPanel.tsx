@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { RotateCw, BarChart3 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { scenarios } from '../data/scenarios'
+import type { DisasterScenario } from '../data/scenarios'
 import { translations } from '../data/translations'
 import { historicalTyphoons } from '../data/typhoons'
 import { buildRegionalFeatures, getHistoricalTyphoonPathData } from '../utils/helpers'
@@ -35,15 +36,27 @@ export const RankPanel: React.FC = () => {
 
   const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
   const activeFrame = timeline[activeFrameIndex]
-  const activeScenario = useMemo(
-    () => ({
+  const activeScenario = useMemo(() => {
+    if (scenario.id === 'typhoon' && selectedTyphoonId === 'live') {
+      const gustScenario = scenarios.find((s) => s.id === 'gust') || scenario
+      return {
+        ...gustScenario,
+        id: 'typhoon' as const,
+        title: scenario.title,
+        headline: scenario.headline,
+        subtitle: scenario.subtitle,
+        updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
+        source: activeFrame?.source ?? scenario.source,
+        points: activeFrame?.points ?? scenario.points,
+      } as DisasterScenario
+    }
+    return {
       ...scenario,
       updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
       source: activeFrame?.source ?? scenario.source,
       points: activeFrame?.points ?? scenario.points,
-    }),
-    [activeFrame, scenario],
-  )
+    } as DisasterScenario
+  }, [activeFrame, scenario, selectedTyphoonId])
 
   const regionalFeatures = useMemo(
     () => buildRegionalFeatures(vietnamGeoJson, activeScenario),

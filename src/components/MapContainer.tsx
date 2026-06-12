@@ -3,7 +3,7 @@ import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useAppStore } from '../store/useAppStore'
 import { scenarios } from '../data/scenarios'
-import type { DisasterPoint } from '../data/scenarios'
+import type { DisasterPoint, DisasterScenario } from '../data/scenarios'
 import { historicalTyphoons } from '../data/typhoons'
 import { createMapStyle } from '../data/mapThemes'
 import { buildVietnamGrid } from '../utils/vietnamGrid'
@@ -29,6 +29,35 @@ type CalloutPoint = DisasterPoint & {
   iconUrl: string
   iconWidth: number
   iconHeight: number
+}
+
+const BOUNDARY_POLYGON: [number, number][] = [
+  [100.0, 22.5],
+  [104.5, 23.4],
+  [108.0, 21.5],
+  [110.0, 20.0],
+  [114.0, 17.5],
+  [117.5, 12.0],
+  [116.0, 7.5],
+  [110.0, 7.5],
+  [104.5, 8.2],
+  [102.5, 10.0],
+  [100.0, 12.0],
+  [100.0, 16.0],
+  [100.0, 20.0],
+  [100.0, 22.5]
+]
+
+function isPointInBoundary(lon: number, lat: number): boolean {
+  let inside = false
+  for (let i = 0, j = BOUNDARY_POLYGON.length - 1; i < BOUNDARY_POLYGON.length; j = i, i++) {
+    const xi = BOUNDARY_POLYGON[i][0], yi = BOUNDARY_POLYGON[i][1]
+    const xj = BOUNDARY_POLYGON[j][0], yj = BOUNDARY_POLYGON[j][1]
+    const intersect = ((yi > lat) !== (yj > lat))
+        && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)
+    if (intersect) inside = !inside
+  }
+  return inside
 }
 
 // Local helper functions for typhoon simulation
@@ -130,15 +159,27 @@ export const MapContainer: React.FC = () => {
 
   const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
   const activeFrame = timeline[activeFrameIndex]
-  const activeScenario = useMemo(
-    () => ({
+  const activeScenario = useMemo(() => {
+    if (scenario.id === 'typhoon' && selectedTyphoonId === 'live') {
+      const gustScenario = scenarios.find((s) => s.id === 'gust') || scenario
+      return {
+        ...gustScenario,
+        id: 'typhoon' as const,
+        title: scenario.title,
+        headline: scenario.headline,
+        subtitle: scenario.subtitle,
+        updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
+        source: activeFrame?.source ?? scenario.source,
+        points: activeFrame?.points ?? scenario.points,
+      } as DisasterScenario
+    }
+    return {
       ...scenario,
       updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
       source: activeFrame?.source ?? scenario.source,
       points: activeFrame?.points ?? scenario.points,
-    }),
-    [activeFrame, scenario],
-  )
+    } as DisasterScenario
+  }, [activeFrame, scenario, selectedTyphoonId])
 
   const activeScenarioPointsRef = useRef(activeScenario.points)
   const activeScenarioMaxValRef = useRef(activeScenario.maxValue)
@@ -1133,8 +1174,8 @@ export const MapContainer: React.FC = () => {
               'text-size': 9,
               'text-offset': [0, -1.2],
               'text-anchor': 'bottom',
-              'text-allow-overlap': false,
-              'text-ignore-placement': false,
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
             },
             paint: {
               'text-color': '#ffffff',
@@ -1157,8 +1198,8 @@ export const MapContainer: React.FC = () => {
               'text-size': 8.5,
               'text-offset': [0, 1.2],
               'text-anchor': 'top',
-              'text-allow-overlap': false,
-              'text-ignore-placement': false,
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
             },
             paint: {
               'text-color': '#e0e0e0',
@@ -1322,7 +1363,7 @@ export const MapContainer: React.FC = () => {
   useEffect(() => {
     const canvas = particleCanvasRef.current
     const map = mapRef.current
-    if (!canvas || !map) return
+    if (!canvas || !map || !mapStyleLoaded || !mapLayersInitialized) return
 
     const isWind = ['wind', 'forecast_wind', 'gust'].includes(scenarioId)
     const isTyphoonWind = scenarioId === 'typhoon' && overlayWind
@@ -1380,7 +1421,14 @@ export const MapContainer: React.FC = () => {
         sumVal += p.value * weight
         sumWeight += weight
       }
-      return sumWeight === 0 ? 0 : sumVal / sumWeight
+      const threshold = 0.00005
+      if (sumWeight < threshold) {
+        const ratio = sumWeight / threshold
+        const localVal = sumWeight === 0 ? 0 : sumVal / sumWeight
+        const defaultWindSpeed = 3.5
+        return localVal * ratio + defaultWindSpeed * (1 - ratio)
+      }
+      return sumVal / sumWeight
     }
 
     const estimateDirectionLocal = (lon: number, lat: number, points: DisasterPoint[]) => {
@@ -1398,15 +1446,34 @@ export const MapContainer: React.FC = () => {
         cosSum += Math.cos(rad) * weight
         weightSum += weight
       }
-      if (weightSum === 0) return 0
+      const threshold = 0.00005
+      const defaultWindDirectionRad = (250 * Math.PI) / 180
+      if (weightSum < threshold) {
+        const ratio = weightSum / threshold
+        const localSin = weightSum === 0 ? 0 : sinSum / weightSum
+        const localCos = weightSum === 0 ? 0 : cosSum / weightSum
+        const blendedSin = localSin * ratio + Math.sin(defaultWindDirectionRad) * (1 - ratio)
+        const blendedCos = localCos * ratio + Math.cos(defaultWindDirectionRad) * (1 - ratio)
+        return Math.round((Math.atan2(blendedSin, blendedCos) * 180) / Math.PI + 360) % 360
+      }
       return Math.round((Math.atan2(sinSum, cosSum) * 180) / Math.PI + 360) % 360
     }
 
     // Initialize particles
     const { west: initW, east: initE, south: initS, north: initN } = getBoundsWithMargin()
     const initialGetRandomGridPos = () => {
-      const lon = initW + Math.random() * (initE - initW)
-      const lat = initS + Math.random() * (initN - initS)
+      let lon = 0, lat = 0
+      let attempts = 0
+      do {
+        lon = initW + Math.random() * (initE - initW)
+        lat = initS + Math.random() * (initN - initS)
+        attempts++
+      } while (!isPointInBoundary(lon, lat) && attempts < 20)
+
+      if (attempts >= 20) {
+        lon = 104.0 + Math.random() * 4.0
+        lat = 14.0 + Math.random() * 4.0
+      }
       return { lon, lat }
     }
 
@@ -1442,8 +1509,18 @@ export const MapContainer: React.FC = () => {
 
         const { west, east, south, north } = getBoundsWithMargin()
         const getRandomGridPos = () => {
-          const lon = west + Math.random() * (east - west)
-          const lat = south + Math.random() * (north - south)
+          let lon = 0, lat = 0
+          let attempts = 0
+          do {
+            lon = west + Math.random() * (east - west)
+            lat = south + Math.random() * (north - south)
+            attempts++
+          } while (!isPointInBoundary(lon, lat) && attempts < 20)
+
+          if (attempts >= 20) {
+            lon = 104.0 + Math.random() * 4.0
+            lat = 14.0 + Math.random() * 4.0
+          }
           return { lon, lat }
         }
 
@@ -1451,12 +1528,13 @@ export const MapContainer: React.FC = () => {
         const pitchRad = (map.getPitch() * Math.PI) / 180
         const pixelsPerMeter = (256 * Math.pow(2, zoom)) / 40075000
         const heightOffset = 18000 * pixelsPerMeter * Math.sin(pitchRad)
-        const zoomScale = zoom > 6 ? 1.0 + (zoom - 6) * 0.45 : 1.0
+        const baseScale = Math.pow(1.4, zoom - 6.0)
+        const zoomScale = Math.max(1.0, Math.min(2.5, baseScale))
 
         for (let i = 0; i < activeParticleCount; i++) {
           const p = particles[i]
 
-          const isOutside = p.lon < west || p.lon > east || p.lat < south || p.lat > north
+          const isOutside = p.lon < west || p.lon > east || p.lat < south || p.lat > north || !isPointInBoundary(p.lon, p.lat)
           if (
             p.age >= p.life ||
             isOutside
@@ -1479,7 +1557,7 @@ export const MapContainer: React.FC = () => {
           const dLon = Math.sin(travelAngleRad) / (cosLat > 0.1 ? cosLat : 1)
           const dLat = Math.cos(travelAngleRad)
 
-          const S = (0.08 + (speed / maxVal) * 0.32) * p.lengthScale * zoomScale
+          const S = (0.15 + (speed / maxVal) * 0.45) * p.lengthScale * zoomScale * 0.25
           const stepSize = Math.min(0.065, S * degPerPixel)
 
           p.lon += dLon * stepSize
@@ -1488,7 +1566,7 @@ export const MapContainer: React.FC = () => {
 
           p.trail.push({ lon: p.lon, lat: p.lat })
 
-          const maxTrailLength = Math.round(40 * p.lengthScale)
+          const maxTrailLength = Math.round(180 * p.lengthScale * Math.max(0.6, Math.min(2.5, baseScale)))
           if (p.trail.length > maxTrailLength) {
             p.trail.shift()
           }
@@ -1512,8 +1590,8 @@ export const MapContainer: React.FC = () => {
               const ratio = j / points2D.length
               ctx.strokeStyle = `rgba(245, 248, 255, ${ratio * (0.75 + (speed / maxVal) * 0.95)})`
 
-              const zoomWidthScale = zoom > 6 ? 1.0 + (zoom - 6) * 0.1 : 1.0
-              ctx.lineWidth = (0.8 + ratio * 3.0) * (0.8 + (speed / maxVal) * 1.2) * zoomWidthScale
+              const zoomWidthScale = Math.max(0.8, Math.min(3.5, baseScale))
+              ctx.lineWidth = (1.2 + ratio * 3.8) * (0.8 + (speed / maxVal) * 1.2) * zoomWidthScale
               ctx.stroke()
             }
           }
@@ -1547,7 +1625,7 @@ export const MapContainer: React.FC = () => {
 
   return (
     <>
-      <div ref={mapContainerRef} className="map-canvas" />
+      <div ref={mapContainerRef} className="map-canvas" style={{ position: 'absolute', inset: 0 }} />
       <canvas
         ref={particleCanvasRef}
         className="wind-particle-canvas"

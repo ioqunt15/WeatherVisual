@@ -813,6 +813,7 @@ export const scenarios: DisasterScenario[] = [
     metric: '풍속',
     updatedAt: '2026.06.04 14:00',
     source: 'VHWIS 태풍센터',
+    vhwisCategory: 'T1H',
     maxValue: 75,
     minValue: 0,
     gridCellSizeMeters: 5500,
