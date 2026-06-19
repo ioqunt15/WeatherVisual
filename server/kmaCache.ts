@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { DisasterPoint, DisasterScenario } from '../src/data/scenarios'
-import { scenarios } from '../src/data/scenarios'
+import type { DisasterPoint, DisasterScenario } from '../src/data/scenarios.js'
+import { scenarios } from '../src/data/scenarios.js'
 import { Redis } from 'ioredis'
 
 type KmaFrame = {
