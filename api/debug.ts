@@ -21,7 +21,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse 
     }
 
     console.log('Dynamically importing kmaCache...')
-    const { getTimeline } = await import('../server/kmaCache')
+    const { getTimeline } = await import('../server/kmaCache.js')
 
     res.status(200).json({
       success: true,
