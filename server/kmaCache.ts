@@ -439,7 +439,7 @@ async function fetchOpenMeteo(scenarioId: string, forceRefresh = false, _options
   }
 }
 
-async function getTimeline(scenarioId: string, forceRefresh = false, options: TimelineOptions = {}) {
+export async function getTimeline(scenarioId: string, forceRefresh = false, options: TimelineOptions = {}) {
   const cacheKey = `timeline:${scenarioId}:${options.start || ''}:${options.end || ''}`
   const localCacheKey = `${scenarioId}:${options.start || ''}:${options.end || ''}`
   const now = Date.now()
