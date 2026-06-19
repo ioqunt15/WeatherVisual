@@ -344,6 +344,24 @@ export function translateLiveText(text: string | undefined, lang: Language): str
   
   processed = processed.replace(/Open-Meteo/gi, 'CF-VHWIS')
   
+  if (lang === 'vi') {
+    processed = processed.replace(/CF-VHWIS 대기질 실황/gi, 'Chất lượng không khí thực tế CF-VHWIS')
+    processed = processed.replace(/CF-VHWIS 대기질 예보/gi, 'Dự báo chất lượng không khí CF-VHWIS')
+    processed = processed.replace(/VHWIS 해양실황/gi, 'Thực tế hải dương VHWIS')
+    processed = processed.replace(/VHWIS 해양예보/gi, 'Dự báo hải dương VHWIS')
+    processed = processed.replace(/CF-VHWIS 12시간 누적강수/gi, 'Lượng mưa tích lũy 12 giờ CF-VHWIS')
+    processed = processed.replace(/CF-VHWIS 실황/gi, 'Thực tế CF-VHWIS')
+    processed = processed.replace(/CF-VHWIS 예보/gi, 'Dự báo CF-VHWIS')
+  } else if (lang === 'en') {
+    processed = processed.replace(/CF-VHWIS 대기질 실황/gi, 'CF-VHWIS Air Quality Observed')
+    processed = processed.replace(/CF-VHWIS 대기질 예보/gi, 'CF-VHWIS Air Quality Forecast')
+    processed = processed.replace(/VHWIS 해양실황/gi, 'VHWIS Marine Observations')
+    processed = processed.replace(/VHWIS 해양예보/gi, 'VHWIS Marine Forecast')
+    processed = processed.replace(/CF-VHWIS 12시간 누적강수/gi, 'CF-VHWIS 12h Accumulated Rainfall')
+    processed = processed.replace(/CF-VHWIS 실황/gi, 'CF-VHWIS Observed')
+    processed = processed.replace(/CF-VHWIS 예보/gi, 'CF-VHWIS Forecast')
+  }
+  
   if (processed.includes('실황')) {
     if (lang === 'vi') {
       processed = processed.replace(/실황/g, 'Thực tế')

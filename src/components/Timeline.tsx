@@ -239,7 +239,7 @@ export const Timeline: React.FC = () => {
       {/* Timeline horizontal axis time labels row - aligned outside the chart box */}
       <div className="timebar-axis-row">
         {selectedTrendData.map((item, idx) => {
-          const timePart = item.label.match(/\d{2}:\d{2}/)?.[0] || (item.label.includes('누적') ? (lang === 'ko' ? '누적' : lang === 'vi' ? 'Lũy kế' : 'Accum') : item.label)
+          const timePart = item.label.match(/\d{2}:\d{2}/)?.[0] || (item.label.includes('누적') ? (lang === 'ko' ? '누적' : lang === 'vi' ? 'Lũy kế' : 'Accum') : translateLiveText(item.label, lang))
           return (
             <span key={idx} style={{ left: `${2 + (idx / totalSteps) * 96}%` }}>
               {timePart}
