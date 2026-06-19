@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Redis } from 'ioredis'
-import { getTimeline } from '../server/kmaCache'
 
 // Trigger a new deployment build on Vercel
 export default async function handler(req: IncomingMessage, res: ServerResponse & { status: (c: number) => any; json: (b: any) => void; end: () => void }) {
@@ -20,6 +19,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse 
       clientInfo = `initialized, status: ${client.status}`
       client.disconnect()
     }
+
+    console.log('Dynamically importing kmaCache...')
+    const { getTimeline } = await import('../server/kmaCache')
 
     res.status(200).json({
       success: true,
