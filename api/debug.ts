@@ -1,24 +1,36 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { getTimeline } from '../server/kmaCache'
+import fs from 'node:fs'
+import path from 'node:path'
+
+function listFiles(dir: string, fileList: string[] = []): string[] {
+  try {
+    const files = fs.readdirSync(dir)
+    for (const file of files) {
+      const name = path.join(dir, file)
+      if (fs.statSync(name).isDirectory()) {
+        if (!file.includes('node_modules') && !file.startsWith('.')) {
+          listFiles(name, fileList)
+        }
+      } else {
+        fileList.push(name)
+      }
+    }
+  } catch (err) {
+    fileList.push(`Error reading ${dir}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  return fileList
+}
 
 export default async function handler(req: IncomingMessage, res: ServerResponse & { status: (c: number) => any; json: (b: any) => void; end: () => void }) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
 
-  try {
-    const start = Date.now()
-    const payload = await getTimeline('temperature', false)
-    res.status(200).json({
-      success: true,
-      timeMs: Date.now() - start,
-      payloadFrames: payload.frames.length,
-      updatedAt: payload.updatedAt
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    })
-  }
+  const taskDir = '/var/task'
+  const files = listFiles(taskDir)
+
+  res.status(200).json({
+    success: true,
+    cwd: process.cwd(),
+    files: files.map(f => f.replace(taskDir, ''))
+  })
 }
