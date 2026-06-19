@@ -1,36 +1,34 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import fs from 'node:fs'
-import path from 'node:path'
-
-function listFiles(dir: string, fileList: string[] = []): string[] {
-  try {
-    const files = fs.readdirSync(dir)
-    for (const file of files) {
-      const name = path.join(dir, file)
-      if (fs.statSync(name).isDirectory()) {
-        if (!file.includes('node_modules') && !file.startsWith('.')) {
-          listFiles(name, fileList)
-        }
-      } else {
-        fileList.push(name)
-      }
-    }
-  } catch (err) {
-    fileList.push(`Error reading ${dir}: ${err instanceof Error ? err.message : String(err)}`)
-  }
-  return fileList
-}
+import { Redis } from 'ioredis'
 
 export default async function handler(req: IncomingMessage, res: ServerResponse & { status: (c: number) => any; json: (b: any) => void; end: () => void }) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
 
-  const taskDir = '/var/task'
-  const files = listFiles(taskDir)
+  try {
+    const url = process.env.REDIS_URL
+    let clientInfo = 'none'
 
-  res.status(200).json({
-    success: true,
-    cwd: process.cwd(),
-    files: files.map(f => f.replace(taskDir, ''))
-  })
+    if (url) {
+      console.log('Testing named Redis constructor...')
+      const client = new Redis(url, {
+        maxRetriesPerRequest: 1,
+        connectTimeout: 1000,
+      })
+      clientInfo = `initialized, status: ${client.status}`
+      client.disconnect()
+    }
+
+    res.status(200).json({
+      success: true,
+      namedRedisType: typeof Redis,
+      clientInfo
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+  }
 }
