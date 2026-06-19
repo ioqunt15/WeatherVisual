@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { getTimeline } from '../../server/kmaCache.ts'
+import { getTimeline } from '../../server/kmaCache'
 
 type ExtendedRequest = IncomingMessage & {
   query: { [key: string]: string | string[] }
