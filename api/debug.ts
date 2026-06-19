@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Redis } from 'ioredis'
+import { getTimeline } from '../server/kmaCache'
 
 export default async function handler(req: IncomingMessage, res: ServerResponse & { status: (c: number) => any; json: (b: any) => void; end: () => void }) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -22,7 +23,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse 
     res.status(200).json({
       success: true,
       namedRedisType: typeof Redis,
-      clientInfo
+      clientInfo,
+      timeline: await getTimeline('temperature').then(t => ({ success: true, framesCount: t.frames.length })).catch(e => ({ success: false, error: e.message }))
     })
   } catch (error) {
     res.status(500).json({
