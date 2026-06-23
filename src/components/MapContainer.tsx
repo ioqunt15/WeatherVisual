@@ -7,7 +7,6 @@ import type { DisasterPoint, DisasterScenario } from '../data/scenarios'
 import { historicalTyphoons } from '../data/typhoons'
 import { createMapStyle } from '../data/mapThemes'
 import { buildVietnamGrid } from '../utils/vietnamGrid'
-import type { GridCell } from '../utils/vietnamGrid'
 import { rgbaToCss, valueToSteppedColor } from '../utils/color'
 import { translations } from '../data/translations'
 import {
@@ -159,6 +158,7 @@ export const MapContainer: React.FC = () => {
 
   const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
   const activeFrame = timeline[activeFrameIndex]
+  const hasTimelineData = timeline.length > 0
   const activeScenario = useMemo(() => {
     if (scenario.id === 'typhoon' && selectedTyphoonId === 'live') {
       const gustScenario = scenarios.find((s) => s.id === 'gust') || scenario
@@ -170,16 +170,16 @@ export const MapContainer: React.FC = () => {
         subtitle: scenario.subtitle,
         updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
         source: activeFrame?.source ?? scenario.source,
-        points: activeFrame?.points ?? scenario.points,
+        points: hasTimelineData ? (activeFrame?.points ?? scenario.points) : [],
       } as DisasterScenario
     }
     return {
       ...scenario,
       updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
       source: activeFrame?.source ?? scenario.source,
-      points: activeFrame?.points ?? scenario.points,
+      points: hasTimelineData ? (activeFrame?.points ?? scenario.points) : [],
     } as DisasterScenario
-  }, [activeFrame, scenario, selectedTyphoonId])
+  }, [activeFrame, hasTimelineData, scenario, selectedTyphoonId])
 
   const activeScenarioPointsRef = useRef(activeScenario.points)
   const activeScenarioMaxValRef = useRef(activeScenario.maxValue)
@@ -190,14 +190,16 @@ export const MapContainer: React.FC = () => {
   }, [activeScenario.points, activeScenario.maxValue])
 
   const gridCells = useMemo(() => {
-    let cells: GridCell[] = []
-    if (activeFrame?.gridPoints?.length) {
-      cells = activeFrame.gridPoints
-    } else {
-      cells = buildVietnamGrid(activeScenario, vietnamGeoJson)
+    if (!hasTimelineData) {
+      return []
     }
-    return cells
-  }, [activeFrame, activeScenario, vietnamGeoJson])
+
+    if (activeFrame?.gridPoints?.length) {
+      return activeFrame.gridPoints
+    }
+
+    return buildVietnamGrid(activeScenario, vietnamGeoJson)
+  }, [activeFrame, activeScenario, hasTimelineData, vietnamGeoJson])
 
   const gridCellsRef = useRef(gridCells)
   useEffect(() => {

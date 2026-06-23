@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { scenarios } from '../data/scenarios'
 import { translations } from '../data/translations'
-import { categories, scenarioIcon, generateMockTimeline } from '../utils/helpers'
+import { categories, scenarioIcon } from '../utils/helpers'
 
 export const Sidebar: React.FC = () => {
   const showControls = useAppStore((state) => state.showControls)
@@ -46,15 +46,13 @@ export const Sidebar: React.FC = () => {
     }
     const nextScenario = scenarios.find((item) => item.id === nextScenarioId) ?? scenarios[0]
 
-    const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(nextScenario.id)
-    const mockTimeline = generateMockTimeline(nextScenario, lang)
     setScenarioId(nextScenario.id)
-    setFrameIndex(isObs ? mockTimeline.length - 1 : 0)
+    setFrameIndex(0)
     startColumnReveal()
     setIsTimelinePlaying(false)
     setMobileMenuOpen(false)
-    setDataStatus({ key: nextScenario.vhwisCategory ? 'status_checking' : 'status_sample' })
-    setTimeline(mockTimeline)
+    setDataStatus({ key: 'status_loading' })
+    setTimeline([])
   }
 
   if (!showControls || shortcutChromeHidden) return null

@@ -22,7 +22,6 @@ import type { CameraShot, ScriptText, OverlayKey } from './types'
 import {
   translateLiveText,
   createCameraThumbnail,
-  generateMockTimeline,
   generateTyphoonTimeline,
   wait,
   clamp,
@@ -191,14 +190,15 @@ function App() {
 
   const activeFrameIndex = Math.min(frameIndex, Math.max(timeline.length - 1, 0))
   const activeFrame = timeline[activeFrameIndex]
+  const hasTimelineData = timeline.length > 0
   const activeScenario = useMemo(
     () => ({
       ...scenario,
       updatedAt: activeFrame?.updatedAt ?? scenario.updatedAt,
       source: activeFrame?.source ?? scenario.source,
-      points: activeFrame?.points ?? scenario.points,
+      points: hasTimelineData ? (activeFrame?.points ?? scenario.points) : [],
     }),
-    [activeFrame, scenario],
+    [activeFrame, hasTimelineData, scenario],
   )
 
   const regionalFeatures = useMemo(
@@ -206,7 +206,9 @@ function App() {
     [activeScenario, vietnamGeoJson]
   )
 
-  const visibleCellCount = regionLayer === 'regions' ? regionalFeatures.length : (activeFrame?.gridPoints?.length || activeScenario.points.length)
+  const visibleCellCount = hasTimelineData
+    ? (regionLayer === 'regions' ? regionalFeatures.length : (activeFrame?.gridPoints?.length || activeScenario.points.length))
+    : 0
 
   // Fetch vietnam GeoJSON on mount
   useEffect(() => {
@@ -260,26 +262,26 @@ function App() {
         })
 
         const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(targetScenario.id)
-        const nextTimeline = mappedFrames.length > 1 ? mappedFrames : generateMockTimeline(targetScenario, lang)
+        const nextTimeline = mappedFrames
         setTimeline(nextTimeline)
-        setFrameIndex(isObs ? nextTimeline.length - 1 : 0)
+        setFrameIndex(isObs && nextTimeline.length > 0 ? nextTimeline.length - 1 : 0)
         setColumnReveal(1)
-        setDataStatus({
-          key: payload.cacheHit ? 'status_cache_hit' : 'status_cache_update',
-          arg: payload.successfulPoints,
-        })
+        setDataStatus(nextTimeline.length > 0
+          ? {
+              key: payload.cacheHit ? 'status_cache_hit' : 'status_cache_update',
+              arg: payload.successfulPoints,
+            }
+          : { key: 'status_loading' })
       })
       .catch(() => {
         if (cancelled || requestId !== requestSeqRef.current) {
           return
         }
 
-        const isObs = ['temperature', 'humidity', 'wind', 'gust', 'pressure', 'rain', 'solar', 'sst', 'wave'].includes(targetScenario.id)
-        const mockTimeline = generateMockTimeline(targetScenario, lang)
-        setTimeline(mockTimeline)
-        setFrameIndex(isObs ? mockTimeline.length - 1 : 0)
+        setTimeline([])
+        setFrameIndex(0)
         setColumnReveal(1)
-        setDataStatus({ key: 'status_api_fail' })
+        setDataStatus({ key: 'status_loading' })
       })
 
     return () => {

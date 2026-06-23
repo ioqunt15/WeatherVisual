@@ -17,6 +17,8 @@ export const Timeline: React.FC = () => {
   const showControls = useAppStore((state) => state.showControls)
   const isTimebarExpanded = useAppStore((state) => state.isTimebarExpanded)
   const lang = useAppStore((state) => state.lang)
+  const dataStatus = useAppStore((state) => state.dataStatus)
+  const overlayVisibility = useAppStore((state) => state.overlayVisibility)
 
   const setIsTimelinePlaying = useAppStore((state) => state.setIsTimelinePlaying)
   const setFrameIndex = useAppStore((state) => state.setFrameIndex)
@@ -116,8 +118,22 @@ export const Timeline: React.FC = () => {
   const activePct = 2 + (activeFrameIndex / totalSteps) * 96
   const activeValColor = rgbaToCss(valueToSteppedColor(selectedStation?.value ?? activeScenario.minValue, activeScenario.palette, 255))
 
-  if (!showControls || !useAppStore.getState().overlayVisibility.timeline || timeline.length < 1) {
+  const renderStatusText = () => {
+    const template = translations[lang][dataStatus.key] || translations[lang]['status_loading'] || dataStatus.key
+    return dataStatus.arg !== undefined ? template.replace('{0}', String(dataStatus.arg)) : template
+  }
+
+  if (!showControls || !overlayVisibility.timeline) {
     return null
+  }
+
+  if (timeline.length < 1) {
+    return (
+      <div className="timebar-loading" aria-live="polite">
+        <RotateCw size={13} className="timebar-loading-spinner" />
+        <span>{renderStatusText()}</span>
+      </div>
+    )
   }
 
   const linePath = selectedTrendData

@@ -1,12 +1,11 @@
 import { create } from 'zustand'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { scenarios } from '../data/scenarios'
 import type { DisasterScenario } from '../data/scenarios'
 import type { MapThemeId } from '../data/mapThemes'
 import type { VietnamGeoJson } from '../utils/vietnamGrid'
 import type { VhwisFrame } from '../services/kma'
 import type { Language, RegionLayerId, CameraShot, RecordingState, OverlayVisibility, RecordingFormat } from '../types'
-import { defaultOverlayVisibility, createDefaultCameraShots, generateMockTimeline } from '../utils/helpers'
+import { defaultOverlayVisibility, createDefaultCameraShots } from '../utils/helpers'
 
 let revealFrameId: number | null = null
 
@@ -100,8 +99,8 @@ export const useAppStore = create<AppState>((set) => ({
   mapTheme: 'satellite',
   regionLayer: 'stations',
   vietnamGeoJson: null,
-  timeline: generateMockTimeline(scenarios.find((s) => s.id === 'temperature') || scenarios[0], 'vi'),
-  frameIndex: 6,
+  timeline: [],
+  frameIndex: 0,
   dataStatus: { key: 'status_loading' },
   mapLayersInitialized: false,
   isTimebarExpanded: true,

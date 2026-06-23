@@ -126,7 +126,7 @@ export const RankPanel: React.FC = () => {
     [activeScenario, regionLayer, regionalFeatures],
   )
 
-  if (!overlayVisibility.rank || shortcutChromeHidden) return null
+  if (!overlayVisibility.rank || shortcutChromeHidden || timeline.length < 1) return null
 
   if (activeScenario.id === 'typhoon') {
     return (
